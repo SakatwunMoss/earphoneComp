@@ -39,42 +39,283 @@ function parseDimension(value: string | undefined): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function extractImageUrl(html: string, pageUrl: string): string | null {
+const IMG_PRIORITY_KEYWORDS = [
+  "product",
+  "hero",
+  "main",
+  "primary",
+  "gallery",
+  "item",
+];
+
+function scoreImgKeywords(alt: string, className: string): number {
+  const text = `${alt} ${className}`.toLowerCase();
+  let score = 0;
+  for (const keyword of IMG_PRIORITY_KEYWORDS) {
+    if (text.includes(keyword)) score += 500;
+  }
+  return score;
+}
+
+function parseSrcsetBestUrl(srcset: string): { url: string; size: number } | null {
+  const entries = srcset
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  let bestUrl: string | null = null;
+  let bestSize = 0;
+
+  for (const entry of entries) {
+    const match = entry.match(/^(\S+)\s+(\d+(?:\.\d+)?)(w|x)?$/i);
+    if (!match) {
+      const urlOnly = entry.split(/\s+/)[0];
+      if (urlOnly && !urlOnly.startsWith("data:")) {
+        if (bestSize === 0) {
+          bestUrl = urlOnly;
+          bestSize = 300;
+        }
+      }
+      continue;
+    }
+
+    const [, url, valueStr, unit = "w"] = match;
+    if (!url || url.startsWith("data:")) continue;
+
+    const value = parseFloat(valueStr);
+    const size = unit.toLowerCase() === "x" ? value * 400 : value;
+
+    if (size > bestSize) {
+      bestSize = size;
+      bestUrl = url;
+    }
+  }
+
+  return bestUrl ? { url: bestUrl, size: bestSize } : null;
+}
+
+function normalizeSchemaType(type: unknown): string[] {
+  if (typeof type === "string") return [type];
+  if (Array.isArray(type)) {
+    return type.filter((item): item is string => typeof item === "string");
+  }
+  return [];
+}
+
+function isProductType(type: unknown): boolean {
+  return normalizeSchemaType(type).some(
+    (value) => value === "Product" || value.endsWith("/Product"),
+  );
+}
+
+function extractImageFromJsonLdValue(image: unknown): string | null {
+  if (typeof image === "string" && image.trim()) return image.trim();
+
+  if (Array.isArray(image)) {
+    for (const item of image) {
+      const url = extractImageFromJsonLdValue(item);
+      if (url) return url;
+    }
+    return null;
+  }
+
+  if (image && typeof image === "object") {
+    const record = image as Record<string, unknown>;
+    if (typeof record.url === "string" && record.url.trim()) {
+      return record.url.trim();
+    }
+    if (typeof record.contentUrl === "string" && record.contentUrl.trim()) {
+      return record.contentUrl.trim();
+    }
+  }
+
+  return null;
+}
+
+function findProductImageInJsonLdNode(node: unknown): string | null {
+  if (!node || typeof node !== "object") return null;
+
+  if (Array.isArray(node)) {
+    for (const item of node) {
+      const image = findProductImageInJsonLdNode(item);
+      if (image) return image;
+    }
+    return null;
+  }
+
+  const record = node as Record<string, unknown>;
+
+  if (isProductType(record["@type"])) {
+    const image = extractImageFromJsonLdValue(record.image);
+    if (image) return image;
+  }
+
+  if (Array.isArray(record["@graph"])) {
+    const image = findProductImageInJsonLdNode(record["@graph"]);
+    if (image) return image;
+  }
+
+  for (const value of Object.values(record)) {
+    if (value && typeof value === "object") {
+      const image = findProductImageInJsonLdNode(value);
+      if (image) return image;
+    }
+  }
+
+  return null;
+}
+
+function extractImageFromJsonLd(html: string): string | null {
+  const $ = cheerio.load(html);
+
+  for (const element of $('script[type="application/ld+json"]').toArray()) {
+    const raw = $(element).html()?.trim();
+    if (!raw) continue;
+
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      const image = findProductImageInJsonLdNode(parsed);
+      if (image) return image;
+    } catch {
+      // 壊れた JSON-LD はスキップ
+    }
+  }
+
+  return null;
+}
+
+type ImageExtractionResult = {
+  imageUrl: string | null;
+  hasOgImage: boolean;
+  hasTwitterImage: boolean;
+  imgCandidateCount: number;
+  source: "json-ld" | "og" | "twitter" | "img" | null;
+};
+
+function extractImageUrl(html: string, pageUrl: string): ImageExtractionResult {
   const $ = cheerio.load(html);
 
   const ogImage =
     $('meta[property="og:image"]').attr("content") ??
     $('meta[property="og:image:url"]').attr("content");
-  if (ogImage) return resolveAbsoluteUrl(pageUrl, ogImage);
+  const hasOgImage = Boolean(ogImage?.trim());
 
   const twitterImage =
     $('meta[name="twitter:image"]').attr("content") ??
     $('meta[name="twitter:image:src"]').attr("content");
-  if (twitterImage) return resolveAbsoluteUrl(pageUrl, twitterImage);
+  const hasTwitterImage = Boolean(twitterImage?.trim());
 
-  let bestImage: string | null = null;
-  let bestSize = 0;
+  const jsonLdImage = extractImageFromJsonLd(html);
+  if (jsonLdImage) {
+    return {
+      imageUrl: resolveAbsoluteUrl(pageUrl, jsonLdImage),
+      hasOgImage,
+      hasTwitterImage,
+      imgCandidateCount: 0,
+      source: "json-ld",
+    };
+  }
+
+  if (ogImage) {
+    return {
+      imageUrl: resolveAbsoluteUrl(pageUrl, ogImage),
+      hasOgImage,
+      hasTwitterImage,
+      imgCandidateCount: 0,
+      source: "og",
+    };
+  }
+
+  if (twitterImage) {
+    return {
+      imageUrl: resolveAbsoluteUrl(pageUrl, twitterImage),
+      hasOgImage,
+      hasTwitterImage,
+      imgCandidateCount: 0,
+      source: "twitter",
+    };
+  }
+
+  type ImgCandidate = {
+    url: string;
+    keywordScore: number;
+    sizeScore: number;
+  };
+  const candidates: ImgCandidate[] = [];
 
   $("img").each((_, element) => {
-    const src =
-      $(element).attr("src") ??
-      $(element).attr("data-src") ??
-      $(element).attr("data-lazy-src");
-    if (!src || src.startsWith("data:")) return;
+    const $el = $(element);
+    const alt = $el.attr("alt") ?? "";
+    const className = $el.attr("class") ?? "";
+    const keywordScore = scoreImgKeywords(alt, className);
 
-    const width = parseDimension($(element).attr("width"));
-    const height = parseDimension($(element).attr("height"));
-    const size = Math.max(width, height);
+    const srcCandidates = [
+      $el.attr("src"),
+      $el.attr("data-src"),
+      $el.attr("data-lazy-src"),
+      $el.attr("data-original"),
+    ].filter((value): value is string => Boolean(value?.trim()));
 
-    if (size >= 300 && size > bestSize) {
-      bestSize = size;
-      bestImage = src;
+    const width = parseDimension($el.attr("width"));
+    const height = parseDimension($el.attr("height"));
+    const attrSize = Math.max(width, height);
+
+    const srcset = $el.attr("srcset") ?? $el.attr("data-srcset");
+    const srcsetBest = srcset ? parseSrcsetBestUrl(srcset) : null;
+    const sizeScore = Math.max(attrSize, srcsetBest?.size ?? 0);
+
+    for (const src of srcCandidates) {
+      if (src.startsWith("data:")) continue;
+      candidates.push({ url: src, keywordScore, sizeScore });
+    }
+
+    if (srcsetBest && !srcCandidates.includes(srcsetBest.url)) {
+      candidates.push({
+        url: srcsetBest.url,
+        keywordScore,
+        sizeScore: srcsetBest.size,
+      });
     }
   });
 
-  if (bestImage) return resolveAbsoluteUrl(pageUrl, bestImage);
+  const imgCandidateCount = candidates.length;
 
-  return null;
+  if (candidates.length === 0) {
+    return {
+      imageUrl: null,
+      hasOgImage,
+      hasTwitterImage,
+      imgCandidateCount,
+      source: null,
+    };
+  }
+
+  const best = candidates.reduce((current, candidate) => {
+    const currentRank = current.keywordScore * 10_000 + current.sizeScore;
+    const candidateRank = candidate.keywordScore * 10_000 + candidate.sizeScore;
+    return candidateRank > currentRank ? candidate : current;
+  });
+
+  const acceptable =
+    best.keywordScore > 0 || best.sizeScore >= 300;
+
+  if (!acceptable) {
+    return {
+      imageUrl: null,
+      hasOgImage,
+      hasTwitterImage,
+      imgCandidateCount,
+      source: null,
+    };
+  }
+
+  return {
+    imageUrl: resolveAbsoluteUrl(pageUrl, best.url),
+    hasOgImage,
+    hasTwitterImage,
+    imgCandidateCount,
+    source: "img",
+  };
 }
 
 function delay(ms: number): Promise<void> {
@@ -86,21 +327,68 @@ function randomDelay(): Promise<void> {
   return delay(ms);
 }
 
-async function fetchPageHtml(url: string): Promise<string> {
-  const response = await fetch(url, {
-    headers: {
-      Accept: "text/html,application/xhtml+xml",
-      "User-Agent":
-        "Mozilla/5.0 (compatible; EarphoneCompare/1.0; +https://earphone-compare.local)",
-    },
-    redirect: "follow",
-  });
+function isRetryableFetchError(status: number | undefined, message: string): boolean {
+  if (status !== undefined && status >= 500 && status <= 599) return true;
+  const lower = message.toLowerCase();
+  return (
+    lower.includes("timeout") ||
+    lower.includes("timed out") ||
+    lower.includes("network") ||
+    lower.includes("econnreset") ||
+    lower.includes("fetch failed")
+  );
+}
 
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status} ${response.statusText}`);
+type FetchPageResult =
+  | { ok: true; html: string; status: number }
+  | { ok: false; status?: number; reason: string };
+
+async function fetchPageHtmlOnce(url: string): Promise<FetchPageResult> {
+  let origin: string;
+  try {
+    origin = new URL(url).origin;
+  } catch {
+    origin = url;
   }
 
-  return response.text();
+  try {
+    const response = await fetch(url, {
+      headers: {
+        Accept: "text/html,application/xhtml+xml",
+        "Accept-Language": "ja-JP,ja;q=0.9",
+        Referer: origin,
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      },
+      redirect: "follow",
+    });
+
+    if (!response.ok) {
+      return {
+        ok: false,
+        status: response.status,
+        reason: `HTTP ${response.status} ${response.statusText}`,
+      };
+    }
+
+    return { ok: true, html: await response.text(), status: response.status };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { ok: false, reason: message };
+  }
+}
+
+async function fetchPageHtml(url: string): Promise<FetchPageResult> {
+  const first = await fetchPageHtmlOnce(url);
+  if (first.ok) return first;
+
+  if (isRetryableFetchError(first.status, first.reason)) {
+    console.log(`  リトライ待機中 (2秒): ${first.reason}`);
+    await delay(2000);
+    return fetchPageHtmlOnce(url);
+  }
+
+  return first;
 }
 
 type EarphoneRow = {
@@ -109,6 +397,21 @@ type EarphoneRow = {
   url: string;
   image_url: string | null;
 };
+
+type FailureRecord = {
+  name: string;
+  url: string;
+  reason: string;
+};
+
+function formatExtractionFailureReason(result: ImageExtractionResult): string {
+  return [
+    "画像URLを抽出できませんでした",
+    `og:image=${result.hasOgImage ? "あり" : "なし"}`,
+    `twitter:image=${result.hasTwitterImage ? "あり" : "なし"}`,
+    `<img>候補=${result.imgCandidateCount}件`,
+  ].join(", ");
+}
 
 function getServiceRoleKey(): string | undefined {
   const candidates = [
@@ -196,21 +499,36 @@ async function main(): Promise<void> {
 
   let successCount = 0;
   let failureCount = 0;
+  const failures: FailureRecord[] = [];
 
   for (let index = 0; index < earphones.length; index++) {
     const earphone = earphones[index];
     const pageUrl = earphone.url!.trim();
 
-    try {
-      const html = await fetchPageHtml(pageUrl);
-      const imageUrl = extractImageUrl(html, pageUrl);
+    const fetchResult = await fetchPageHtml(pageUrl);
 
-      if (!imageUrl) {
+    if (!fetchResult.ok) {
+      const reason =
+        fetchResult.status !== undefined
+          ? `${fetchResult.reason} (status=${fetchResult.status})`
+          : fetchResult.reason;
+      console.log(`取得失敗: ${earphone.name}`);
+      console.log(`  理由: ${reason}`);
+      failures.push({ name: earphone.name, url: pageUrl, reason });
+      failureCount++;
+    } else {
+      const extraction = extractImageUrl(fetchResult.html, pageUrl);
+
+      if (!extraction.imageUrl) {
+        const reason = formatExtractionFailureReason(extraction);
         console.log(`取得失敗: ${earphone.name}`);
+        console.log(`  HTTP status: ${fetchResult.status}`);
+        console.log(`  理由: ${reason}`);
+        failures.push({ name: earphone.name, url: pageUrl, reason });
         failureCount++;
       } else {
         const updatePayload: Pick<EarphoneRow, "image_url"> = {
-          image_url: imageUrl,
+          image_url: extraction.imageUrl,
         };
         const { error: updateError } = await supabase
           .from("earphones")
@@ -218,17 +536,18 @@ async function main(): Promise<void> {
           .eq("id", earphone.id);
 
         if (updateError) {
-          console.log(`取得失敗: ${earphone.name} (${updateError.message})`);
+          const reason = `Supabase更新失敗: ${updateError.message}`;
+          console.log(`取得失敗: ${earphone.name}`);
+          console.log(`  理由: ${reason}`);
+          failures.push({ name: earphone.name, url: pageUrl, reason });
           failureCount++;
         } else {
-          console.log(`成功: ${earphone.name}`);
+          console.log(
+            `成功: ${earphone.name} (source=${extraction.source}, status=${fetchResult.status})`,
+          );
           successCount++;
         }
       }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      console.log(`取得失敗: ${earphone.name} (${message})`);
-      failureCount++;
     }
 
     if (index < earphones.length - 1) {
@@ -237,6 +556,16 @@ async function main(): Promise<void> {
   }
 
   console.log(`\n${total}件中 ${successCount}件成功、${failureCount}件失敗`);
+
+  if (failures.length > 0) {
+    console.log("\n--- 失敗一覧 ---");
+    for (const failure of failures) {
+      console.log(`商品名: ${failure.name}`);
+      console.log(`URL: ${failure.url}`);
+      console.log(`失敗理由: ${failure.reason}`);
+      console.log("");
+    }
+  }
 }
 
 main().catch((err) => {

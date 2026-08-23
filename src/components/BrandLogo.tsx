@@ -1,7 +1,7 @@
 "use client";
 
 import { RemoteImage } from "@/components/RemoteImage";
-import { getBrandLogoUrl } from "@/lib/brand-logos";
+import { getBrandLogoUrl } from "@/lib/brandLogos";
 
 type BrandLogoProps = {
   brand: string;
@@ -13,7 +13,7 @@ type BrandLogoProps = {
 
 const DEFAULT_CONTAINER_CLASS =
   "mb-3 flex h-16 w-full shrink-0 items-center justify-center overflow-hidden";
-const DEFAULT_IMAGE_CLASS = "max-h-full w-auto max-w-full object-contain";
+const DEFAULT_IMAGE_CLASS = "max-h-full h-full w-auto max-w-full object-contain";
 
 const DEFAULT_PLACEHOLDER_CLASS =
   "flex h-10 w-10 items-center justify-center rounded bg-gray-100 text-xs font-medium text-gray-500";
