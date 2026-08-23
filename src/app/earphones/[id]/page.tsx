@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { Card } from "@/components/Card";
+import { logSupabaseError } from "@/lib/supabase-error";
 import { supabase } from "@/lib/supabase";
 import type { Earphone } from "@/types/database";
 
@@ -21,15 +22,22 @@ async function getEarphone(id: string): Promise<Earphone | null> {
     .maybeSingle();
 
   if (error) {
-    console.error("Failed to fetch earphone:", error);
+    logSupabaseError("Failed to fetch earphone:", error);
     return null;
   }
 
   return data;
 }
 
-function formatPrice(price: number): string {
+function formatPrice(price: number | null): string {
+  if (price == null) {
+    return "—";
+  }
   return `¥${price.toLocaleString("ja-JP")}`;
+}
+
+function formatBoolean(value: boolean): string {
+  return value ? "対応" : "非対応";
 }
 
 export default async function EarphoneDetailPage({ params }: PageProps) {
@@ -61,13 +69,13 @@ export default async function EarphoneDetailPage({ params }: PageProps) {
                 <dd>{earphone.brand}</dd>
               </div>
               <div className="flex gap-2">
-                <dt className="font-medium text-gray-500">形状</dt>
-                <dd>{earphone.form_factor}</dd>
+                <dt className="font-medium text-gray-500">カテゴリ</dt>
+                <dd>{earphone.category}</dd>
               </div>
               <div className="flex gap-2">
-                <dt className="font-medium text-gray-500">発売年</dt>
+                <dt className="font-medium text-gray-500">価格</dt>
                 <dd className="font-medium tracking-tight">
-                  {earphone.released_year}年
+                  {formatPrice(earphone.price)}
                 </dd>
               </div>
             </dl>
@@ -107,8 +115,10 @@ export default async function EarphoneDetailPage({ params }: PageProps) {
                   <td className="px-4 py-3">{earphone.brand}</td>
                 </tr>
                 <tr>
-                  <th className="px-4 py-3 font-medium text-gray-500">形状</th>
-                  <td className="px-4 py-3">{earphone.form_factor}</td>
+                  <th className="px-4 py-3 font-medium text-gray-500">
+                    カテゴリ
+                  </th>
+                  <td className="px-4 py-3">{earphone.category}</td>
                 </tr>
                 <tr>
                   <th className="px-4 py-3 font-medium text-gray-500">価格</th>
@@ -117,8 +127,24 @@ export default async function EarphoneDetailPage({ params }: PageProps) {
                   </td>
                 </tr>
                 <tr>
-                  <th className="px-4 py-3 font-medium text-gray-500">発売年</th>
-                  <td className="px-4 py-3">{earphone.released_year}年</td>
+                  <th className="px-4 py-3 font-medium text-gray-500">
+                    ノイズキャンセリング
+                  </th>
+                  <td className="px-4 py-3">
+                    {formatBoolean(earphone.noise_cancelling)}
+                  </td>
+                </tr>
+                <tr>
+                  <th className="px-4 py-3 font-medium text-gray-500">
+                    バッテリー
+                  </th>
+                  <td className="px-4 py-3">{earphone.battery_life ?? "—"}</td>
+                </tr>
+                <tr>
+                  <th className="px-4 py-3 font-medium text-gray-500">防水</th>
+                  <td className="px-4 py-3">
+                    {earphone.water_resistance ?? "—"}
+                  </td>
                 </tr>
               </tbody>
             </table>

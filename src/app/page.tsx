@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { Card } from "@/components/Card";
+import { logSupabaseError } from "@/lib/supabase-error";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import type { Earphone } from "@/types/database";
 
@@ -15,17 +16,20 @@ async function getEarphones(): Promise<{
   const { data, error } = await supabase
     .from("earphones")
     .select("*")
-    .order("released_year", { ascending: false });
+    .order("created_at", { ascending: false });
 
   if (error) {
-    console.error("Failed to fetch earphones:", error);
+    logSupabaseError("Failed to fetch earphones:", error);
     return { earphones: null, error: error.message };
   }
 
   return { earphones: data ?? [], error: null };
 }
 
-function formatPrice(price: number): string {
+function formatPrice(price: number | null): string {
+  if (price == null) {
+    return "—";
+  }
   return `¥${price.toLocaleString("ja-JP")}`;
 }
 
@@ -49,7 +53,7 @@ export default async function Home() {
             気になるイヤホンを比較しよう
           </h1>
           <p className="max-w-xl text-sm leading-relaxed text-gray-600 sm:text-base">
-            ブランド・形状・価格からイヤホンを一覧で比較できるサイトです。
+            ブランド・カテゴリ・価格からイヤホンを一覧で比較できるサイトです。
           </p>
         </div>
       </section>
@@ -79,8 +83,8 @@ export default async function Home() {
                         <dd>{earphone.brand}</dd>
                       </div>
                       <div className="flex gap-2">
-                        <dt className="font-medium text-gray-500">形状</dt>
-                        <dd>{earphone.form_factor}</dd>
+                        <dt className="font-medium text-gray-500">カテゴリ</dt>
+                        <dd>{earphone.category}</dd>
                       </div>
                       <div className="flex gap-2">
                         <dt className="font-medium text-gray-500">価格</dt>

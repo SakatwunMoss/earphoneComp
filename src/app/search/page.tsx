@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 
 import { Card } from "@/components/Card";
+import { logSupabaseError } from "@/lib/supabase-error";
 import { supabase } from "@/lib/supabase";
 import type { Earphone } from "@/types/database";
 
@@ -17,7 +18,10 @@ function getQuery(q: string | string[] | undefined): string {
   return q?.trim() ?? "";
 }
 
-function formatPrice(price: number): string {
+function formatPrice(price: number | null): string {
+  if (price == null) {
+    return "—";
+  }
   return `¥${price.toLocaleString("ja-JP")}`;
 }
 
@@ -30,11 +34,11 @@ async function searchEarphones(keyword: string): Promise<Earphone[]> {
     .from("earphones")
     .select("*")
     .or(
-      `name.ilike.%${keyword}%,brand.ilike.%${keyword}%,form_factor.ilike.%${keyword}%`,
+      `name.ilike.%${keyword}%,brand.ilike.%${keyword}%,category.ilike.%${keyword}%`,
     );
 
   if (error) {
-    console.error("Failed to search earphones:", error);
+    logSupabaseError("Failed to search earphones:", error);
     return [];
   }
 
@@ -83,8 +87,8 @@ export default async function SearchPage({ searchParams }: PageProps) {
                       <dd>{earphone.brand}</dd>
                     </div>
                     <div className="flex gap-2">
-                      <dt className="font-medium text-gray-500">形状</dt>
-                      <dd>{earphone.form_factor}</dd>
+                      <dt className="font-medium text-gray-500">カテゴリ</dt>
+                      <dd>{earphone.category}</dd>
                     </div>
                     <div className="flex gap-2">
                       <dt className="font-medium text-gray-500">価格</dt>
