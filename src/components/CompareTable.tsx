@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { RemoteImage } from "@/components/RemoteImage";
 import { earphonePagePath } from "@/lib/brand-url";
 import { formatPrice } from "@/lib/format";
 import type { Earphone } from "@/types/database";
@@ -10,6 +11,31 @@ type CompareRow = {
   label: string;
   render: (earphone: Earphone) => ReactNode;
   isPrice?: boolean;
+  isImage?: boolean;
+};
+
+const IMAGE_CELL_CLASS = "h-[120px] w-[120px] shrink-0 object-contain";
+
+function CompareEarphoneImage({ earphone }: { earphone: Earphone }) {
+  return (
+    <div className="flex justify-center">
+      <RemoteImage
+        src={earphone.image_url}
+        alt={earphone.name}
+        className={IMAGE_CELL_CLASS}
+        width={120}
+        height={120}
+        placeholderClassName={`${IMAGE_CELL_CLASS} rounded-lg`}
+      />
+    </div>
+  );
+}
+
+const IMAGE_ROW: CompareRow = {
+  key: "image",
+  label: "画像",
+  isImage: true,
+  render: (earphone) => <CompareEarphoneImage earphone={earphone} />,
 };
 
 const BASE_COMPARE_ROWS: CompareRow[] = [
@@ -115,8 +141,8 @@ export function CompareTable({
 }: CompareTableProps) {
   const lowestPrice = getLowestPrice(earphones);
   const rows = showBrandColumn
-    ? [BRAND_ROW, ...BASE_COMPARE_ROWS]
-    : BASE_COMPARE_ROWS;
+    ? [IMAGE_ROW, BRAND_ROW, ...BASE_COMPARE_ROWS]
+    : [IMAGE_ROW, ...BASE_COMPARE_ROWS];
 
   return (
     <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
@@ -151,7 +177,11 @@ export function CompareTable({
         <tbody className="divide-y divide-gray-100 text-gray-700">
           {rows.map((row) => (
             <tr key={row.key}>
-              <th className="sticky left-0 z-10 bg-white px-4 py-3 font-medium text-gray-500">
+              <th
+                className={`sticky left-0 z-10 bg-white font-medium text-gray-500 ${
+                  row.isImage ? "px-4 py-4 align-middle" : "px-4 py-3"
+                }`}
+              >
                 {row.label}
               </th>
               {earphones.map((earphone) => {
@@ -163,7 +193,9 @@ export function CompareTable({
                 return (
                   <td
                     key={earphone.id}
-                    className={`px-4 py-3 align-top ${
+                    className={`${
+                      row.isImage ? "px-4 py-4 align-middle" : "px-4 py-3 align-top"
+                    } ${
                       isLowestPrice
                         ? "bg-teal-50 font-semibold text-teal-900"
                         : ""
