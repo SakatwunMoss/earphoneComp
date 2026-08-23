@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import Image from "next/image";
 
+import { BrandLogo } from "@/components/BrandLogo";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { Card } from "@/components/Card";
 import { brandPagePath } from "@/lib/brand-url";
@@ -95,8 +96,12 @@ export default async function Home() {
           ) : brands && brands.length > 0 ? (
             <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {brands.map(({ brand, count }) => (
-                <li key={brand}>
-                  <Card href={brandPagePath(brand)}>
+                <li key={brand} className="flex">
+                  <Card
+                    href={brandPagePath(brand)}
+                    className="flex h-full w-full flex-col"
+                  >
+                    <BrandLogo brand={brand} />
                     <h2 className="mb-2 text-lg font-medium tracking-tight text-gray-900">
                       {brand}
                     </h2>

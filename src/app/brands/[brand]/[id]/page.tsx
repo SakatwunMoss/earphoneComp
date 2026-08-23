@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { Card } from "@/components/Card";
+import { RemoteImage } from "@/components/RemoteImage";
 import { brandFromUrlParam, brandPagePath, earphonePagePath } from "@/lib/brand-url";
 import { formatBoolean, formatPrice } from "@/lib/format";
 import { createPageMetadata } from "@/lib/site-metadata";
@@ -76,6 +77,16 @@ export default async function EarphoneDetailPage({ params }: PageProps) {
 
         <header className="mb-8">
           <Card className="p-6">
+            <div className="mb-6 max-w-md">
+              <RemoteImage
+                src={earphone.image_url}
+                alt={earphone.name}
+                className="h-auto w-full max-w-md object-contain"
+                width={448}
+                height={448}
+                placeholderClassName="aspect-square w-full max-w-md"
+              />
+            </div>
             <h1 className="mb-3 text-3xl font-semibold tracking-tight text-gray-900 sm:text-4xl">
               {earphone.name}
             </h1>

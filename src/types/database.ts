@@ -4,6 +4,7 @@ export type Earphone = {
   brand: string;
   price: number | null;
   url: string | null;
+  image_url: string | null;
   category: string;
   noise_cancelling: boolean;
   battery_life: string | null;
