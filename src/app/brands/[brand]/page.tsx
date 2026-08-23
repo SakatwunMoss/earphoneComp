@@ -1,11 +1,13 @@
 export const dynamic = "force-dynamic";
 
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { Card } from "@/components/Card";
-import { brandFromUrlParam, earphonePagePath } from "@/lib/brand-url";
+import { brandFromUrlParam, brandPagePath, earphonePagePath } from "@/lib/brand-url";
 import { formatPrice } from "@/lib/format";
+import { createPageMetadata } from "@/lib/site-metadata";
 import { logSupabaseError } from "@/lib/supabase-error";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import type { Earphone } from "@/types/database";
@@ -34,6 +36,17 @@ async function getEarphonesByBrand(brand: string): Promise<{
   }
 
   return { earphones: data ?? [], error: null };
+}
+
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const { brand: brandParam } = await params;
+  const brand = brandFromUrlParam(brandParam);
+
+  return createPageMetadata({
+    title: `${brand}のイヤホン一覧`,
+    description: `${brand}ブランドのイヤホンを一覧・比較。価格やスペックを確認できます。`,
+    path: brandPagePath(brand),
+  });
 }
 
 export default async function BrandPage({ params }: PageProps) {

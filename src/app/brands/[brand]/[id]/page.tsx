@@ -1,10 +1,12 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { Card } from "@/components/Card";
-import { brandFromUrlParam, brandPagePath } from "@/lib/brand-url";
+import { brandFromUrlParam, brandPagePath, earphonePagePath } from "@/lib/brand-url";
 import { formatBoolean, formatPrice } from "@/lib/format";
+import { createPageMetadata } from "@/lib/site-metadata";
 import { logSupabaseError } from "@/lib/supabase-error";
 import { supabase } from "@/lib/supabase";
 import type { Earphone } from "@/types/database";
@@ -30,6 +32,26 @@ async function getEarphone(id: string): Promise<Earphone | null> {
   }
 
   return data;
+}
+
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const { brand: brandParam, id } = await params;
+  const brand = brandFromUrlParam(brandParam);
+  const earphone = await getEarphone(id);
+
+  if (!earphone || earphone.brand !== brand) {
+    return { title: "イヤホンが見つかりません" };
+  }
+
+  const description =
+    earphone.description?.trim() ||
+    `${earphone.name}のスペック・価格を確認。${brand}のイヤホン詳細ページです。`;
+
+  return createPageMetadata({
+    title: `${earphone.name}（${brand}）`,
+    description,
+    path: earphonePagePath(brand, id),
+  });
 }
 
 export default async function EarphoneDetailPage({ params }: PageProps) {
