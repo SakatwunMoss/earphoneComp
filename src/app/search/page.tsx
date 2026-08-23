@@ -3,15 +3,26 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 
 import { Breadcrumbs } from "@/components/Breadcrumbs";
-import { Card } from "@/components/Card";
-import { earphonePagePath } from "@/lib/brand-url";
-import { formatPrice } from "@/lib/format";
+import { EarphoneGrid } from "@/components/EarphoneGrid";
+import { FilterPanel } from "@/components/FilterPanel";
+import {
+  applyEarphoneFilters,
+  buildSearchOrFilter,
+  parseEarphoneFilters,
+  uniqueSortedCategories,
+} from "@/lib/earphone-filters";
 import { logSupabaseError } from "@/lib/supabase-error";
-import { supabase } from "@/lib/supabase";
+import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import type { Earphone } from "@/types/database";
 
 type PageProps = {
-  searchParams: Promise<{ q?: string | string[] }>;
+  searchParams: Promise<{
+    q?: string | string[];
+    category?: string | string[];
+    nc?: string | string[];
+    price?: string | string[];
+    sort?: string | string[];
+  }>;
 };
 
 function getQuery(q: string | string[] | undefined): string {
@@ -21,17 +32,22 @@ function getQuery(q: string | string[] | undefined): string {
   return q?.trim() ?? "";
 }
 
-async function searchEarphones(keyword: string): Promise<Earphone[]> {
+async function searchEarphones(
+  keyword: string,
+  filters: ReturnType<typeof parseEarphoneFilters>,
+): Promise<Earphone[]> {
   if (!supabase) {
     return [];
   }
 
-  const { data, error } = await supabase
+  let query = supabase
     .from("earphones")
     .select("*")
-    .or(
-      `name.ilike.%${keyword}%,brand.ilike.%${keyword}%,category.ilike.%${keyword}%`,
-    );
+    .or(buildSearchOrFilter(keyword));
+
+  query = applyEarphoneFilters(query, filters);
+
+  const { data, error } = await query;
 
   if (error) {
     logSupabaseError("Failed to search earphones:", error);
@@ -41,8 +57,28 @@ async function searchEarphones(keyword: string): Promise<Earphone[]> {
   return data ?? [];
 }
 
+async function getSearchCategories(keyword: string): Promise<string[]> {
+  if (!supabase) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from("earphones")
+    .select("category")
+    .or(buildSearchOrFilter(keyword));
+
+  if (error) {
+    logSupabaseError("Failed to fetch search categories:", error);
+    return [];
+  }
+
+  return uniqueSortedCategories(data);
+}
+
 export default async function SearchPage({ searchParams }: PageProps) {
-  const keyword = getQuery((await searchParams).q);
+  const params = await searchParams;
+  const keyword = getQuery(params.q);
+  const filters = parseEarphoneFilters(params);
 
   if (!keyword) {
     return (
@@ -59,7 +95,10 @@ export default async function SearchPage({ searchParams }: PageProps) {
     );
   }
 
-  const earphones = await searchEarphones(keyword);
+  const [earphones, categories] = await Promise.all([
+    searchEarphones(keyword, filters),
+    getSearchCategories(keyword),
+  ]);
 
   return (
     <div className="flex flex-1 flex-col px-6 py-10">
@@ -67,43 +106,23 @@ export default async function SearchPage({ searchParams }: PageProps) {
         <Breadcrumbs
           items={[{ label: "ホーム", href: "/" }, { label: "検索" }]}
         />
-        <h1 className="mb-8 text-2xl font-semibold tracking-tight text-gray-900 sm:text-3xl">
+        <h1 className="mb-2 text-2xl font-semibold tracking-tight text-gray-900 sm:text-3xl">
           「{keyword}」の検索結果
         </h1>
+        <p className="mb-8 text-sm text-gray-600">
+          {earphones.length} 件
+          {!isSupabaseConfigured ? "（Supabase 未設定）" : null}
+        </p>
 
-        {earphones.length === 0 ? (
-          <p className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-8 text-center text-gray-600">
-            一致する結果が見つかりませんでした
-          </p>
-        ) : (
-          <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {earphones.map((earphone) => (
-              <li key={earphone.id}>
-                <Card href={earphonePagePath(earphone.brand, earphone.id)}>
-                  <h2 className="mb-2 text-lg font-medium tracking-tight text-gray-900">
-                    {earphone.name}
-                  </h2>
-                  <dl className="space-y-1 text-sm text-gray-600">
-                    <div className="flex gap-2">
-                      <dt className="font-medium text-gray-500">ブランド</dt>
-                      <dd>{earphone.brand}</dd>
-                    </div>
-                    <div className="flex gap-2">
-                      <dt className="font-medium text-gray-500">カテゴリ</dt>
-                      <dd>{earphone.category}</dd>
-                    </div>
-                    <div className="flex gap-2">
-                      <dt className="font-medium text-gray-500">価格</dt>
-                      <dd className="font-medium tracking-tight">
-                        {formatPrice(earphone.price)}
-                      </dd>
-                    </div>
-                  </dl>
-                </Card>
-              </li>
-            ))}
-          </ul>
-        )}
+        <FilterPanel categories={categories}>
+          {earphones.length === 0 ? (
+            <p className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-8 text-center text-gray-600">
+              該当する機種が見つかりませんでした
+            </p>
+          ) : (
+            <EarphoneGrid earphones={earphones} showBrand />
+          )}
+        </FilterPanel>
 
         <p className="mt-8">
           <Link

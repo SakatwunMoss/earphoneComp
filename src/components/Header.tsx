@@ -2,9 +2,18 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { Suspense, useState } from "react";
 
 import { SearchBox } from "@/components/SearchBox";
+
+function SearchBoxFallback() {
+  return (
+    <div
+      className="h-9 w-full max-w-md animate-pulse rounded-xl border border-gray-200 bg-white"
+      aria-hidden="true"
+    />
+  );
+}
 
 const NAV_LINKS = [
   { href: "/", label: "ホーム" },
@@ -61,7 +70,9 @@ export function Header() {
         </nav>
 
         <div className="ml-auto hidden min-w-0 w-full max-w-md md:block">
-          <SearchBox />
+          <Suspense fallback={<SearchBoxFallback />}>
+            <SearchBox />
+          </Suspense>
         </div>
 
         <button
@@ -101,7 +112,9 @@ export function Header() {
       </div>
 
       <div className="border-t border-teal-100/80 px-6 py-3 md:hidden">
-        <SearchBox />
+        <Suspense fallback={<SearchBoxFallback />}>
+          <SearchBox />
+        </Suspense>
       </div>
 
       {menuOpen ? (
