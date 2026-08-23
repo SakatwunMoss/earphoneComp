@@ -103,10 +103,12 @@ async function fetchPageHtml(url: string): Promise<string> {
   return response.text();
 }
 
-type EarphoneRow = Pick<
-  Database["public"]["Tables"]["earphones"]["Row"],
-  "id" | "name" | "url"
->;
+type EarphoneRow = {
+  id: string;
+  name: string;
+  url: string;
+  image_url: string | null;
+};
 
 function getServiceRoleKey(): string | undefined {
   const candidates = [
@@ -180,8 +182,8 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const earphones = (data ?? []).filter(
-    (row): row is EarphoneRow => Boolean(row.url?.trim()),
+  const earphones = ((data ?? []) as EarphoneRow[]).filter(
+    (row: EarphoneRow): row is EarphoneRow => Boolean(row.url?.trim()),
   );
   const total = earphones.length;
 
@@ -207,9 +209,12 @@ async function main(): Promise<void> {
         console.log(`取得失敗: ${earphone.name}`);
         failureCount++;
       } else {
+        const updatePayload: Pick<EarphoneRow, "image_url"> = {
+          image_url: imageUrl,
+        };
         const { error: updateError } = await supabase
           .from("earphones")
-          .update({ image_url: imageUrl })
+          .update(updatePayload as never)
           .eq("id", earphone.id);
 
         if (updateError) {
