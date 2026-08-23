@@ -12,9 +12,8 @@ type BrandLogoProps = {
 };
 
 const DEFAULT_CONTAINER_CLASS =
-  "mb-3 box-border flex h-24 w-full shrink-0 items-center justify-center overflow-hidden p-3";
-const DEFAULT_IMAGE_CLASS =
-  "max-h-[4.5rem] w-auto max-w-full object-contain";
+  "mb-3 flex h-16 w-full shrink-0 items-center justify-center overflow-hidden";
+const DEFAULT_IMAGE_CLASS = "max-h-full w-auto max-w-full object-contain";
 
 const DEFAULT_PLACEHOLDER_CLASS =
   "flex h-10 w-10 items-center justify-center rounded bg-gray-100 text-xs font-medium text-gray-500";
