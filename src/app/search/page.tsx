@@ -2,7 +2,10 @@ export const dynamic = "force-dynamic";
 
 import Link from "next/link";
 
+import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { Card } from "@/components/Card";
+import { earphonePagePath } from "@/lib/brand-url";
+import { formatPrice } from "@/lib/format";
 import { logSupabaseError } from "@/lib/supabase-error";
 import { supabase } from "@/lib/supabase";
 import type { Earphone } from "@/types/database";
@@ -16,13 +19,6 @@ function getQuery(q: string | string[] | undefined): string {
     return q[0]?.trim() ?? "";
   }
   return q?.trim() ?? "";
-}
-
-function formatPrice(price: number | null): string {
-  if (price == null) {
-    return "—";
-  }
-  return `¥${price.toLocaleString("ja-JP")}`;
 }
 
 async function searchEarphones(keyword: string): Promise<Earphone[]> {
@@ -52,6 +48,9 @@ export default async function SearchPage({ searchParams }: PageProps) {
     return (
       <div className="flex flex-1 flex-col px-6 py-10">
         <main className="mx-auto w-full max-w-6xl">
+          <Breadcrumbs
+            items={[{ label: "ホーム", href: "/" }, { label: "検索" }]}
+          />
           <p className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-8 text-center text-gray-600">
             検索キーワードを入力してください
           </p>
@@ -65,6 +64,9 @@ export default async function SearchPage({ searchParams }: PageProps) {
   return (
     <div className="flex flex-1 flex-col px-6 py-10">
       <main className="mx-auto w-full max-w-6xl">
+        <Breadcrumbs
+          items={[{ label: "ホーム", href: "/" }, { label: "検索" }]}
+        />
         <h1 className="mb-8 text-2xl font-semibold tracking-tight text-gray-900 sm:text-3xl">
           「{keyword}」の検索結果
         </h1>
@@ -77,7 +79,7 @@ export default async function SearchPage({ searchParams }: PageProps) {
           <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {earphones.map((earphone) => (
               <li key={earphone.id}>
-                <Card href={`/earphones/${earphone.id}`}>
+                <Card href={earphonePagePath(earphone.brand, earphone.id)}>
                   <h2 className="mb-2 text-lg font-medium tracking-tight text-gray-900">
                     {earphone.name}
                   </h2>
