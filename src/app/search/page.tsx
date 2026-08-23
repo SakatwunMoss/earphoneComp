@@ -3,8 +3,8 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 
 import { Breadcrumbs } from "@/components/Breadcrumbs";
-import { EarphoneGrid } from "@/components/EarphoneGrid";
 import { FilterPanel } from "@/components/FilterPanel";
+import { SearchCompareGrid } from "@/components/SearchCompareGrid";
 import {
   applyEarphoneFilters,
   buildSearchOrFilter,
@@ -120,7 +120,7 @@ export default async function SearchPage({ searchParams }: PageProps) {
               該当する機種が見つかりませんでした
             </p>
           ) : (
-            <EarphoneGrid earphones={earphones} showBrand />
+            <SearchCompareGrid earphones={earphones} />
           )}
         </FilterPanel>
 

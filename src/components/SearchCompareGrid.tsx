@@ -4,17 +4,16 @@ import { useCallback, useEffect, useState } from "react";
 
 import { CompareFloatingBar } from "@/components/CompareFloatingBar";
 import { EarphoneGrid } from "@/components/EarphoneGrid";
-import { brandComparePagePath } from "@/lib/brand-url";
+import { comparePagePath } from "@/lib/brand-url";
 import type { Earphone } from "@/types/database";
 
 const MAX_COMPARE = 3;
 
-type BrandCompareGridProps = {
-  brand: string;
+type SearchCompareGridProps = {
   earphones: Earphone[];
 };
 
-export function BrandCompareGrid({ brand, earphones }: BrandCompareGridProps) {
+export function SearchCompareGrid({ earphones }: SearchCompareGridProps) {
   const [selected, setSelected] = useState<Earphone[]>([]);
   const [limitMessage, setLimitMessage] = useState<string | null>(null);
 
@@ -61,6 +60,7 @@ export function BrandCompareGrid({ brand, earphones }: BrandCompareGridProps) {
 
       <EarphoneGrid
         earphones={earphones}
+        showBrand
         compare={{
           selectedIds: selected.map((item) => item.id),
           onToggle: toggleSelection,
@@ -68,13 +68,12 @@ export function BrandCompareGrid({ brand, earphones }: BrandCompareGridProps) {
       />
 
       <CompareFloatingBar
-        compareHref={brandComparePagePath(
-          brand,
-          selected.map((item) => item.id),
-        )}
+        showBrand
+        compareHref={comparePagePath(selected.map((item) => item.id))}
         selected={selected.map((item) => ({
           id: item.id,
           name: item.name,
+          brand: item.brand,
         }))}
         onRemove={removeSelection}
         onClear={clearSelection}

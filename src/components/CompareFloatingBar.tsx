@@ -64,7 +64,7 @@ export function CompareFloatingBar({
                         stroke="currentColor"
                         strokeWidth="2.5"
                       >
-                        <path dName="M6 6l12 12M18 6L6 18" />
+                        <path d="M6 6l12 12M18 6L6 18" />
                       </svg>
                     </button>
                   </span>
