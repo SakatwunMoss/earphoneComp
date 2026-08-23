@@ -4,7 +4,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { Breadcrumbs } from "@/components/Breadcrumbs";
-import { EarphoneGrid } from "@/components/EarphoneGrid";
+import { BrandCompareGrid } from "@/components/BrandCompareGrid";
 import { FilterPanel } from "@/components/FilterPanel";
 import {
   applyEarphoneFilters,
@@ -153,7 +153,7 @@ export default async function BrandPage({ params, searchParams }: PageProps) {
         ) : (
           <FilterPanel categories={categories}>
             {earphones && earphones.length > 0 ? (
-              <EarphoneGrid earphones={earphones} />
+              <BrandCompareGrid brand={brand} earphones={earphones} />
             ) : (
               <p className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-8 text-center text-gray-600">
                 該当する機種が見つかりませんでした
