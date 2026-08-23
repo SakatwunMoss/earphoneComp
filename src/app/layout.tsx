@@ -48,6 +48,9 @@ export const metadata: Metadata = {
     description: SITE_DESCRIPTION,
     images: [OG_IMAGE_PATH],
   },
+  other: {
+    "google-adsense-account": "ca-pub-7938835154204291",
+  },
 };
 
 export const viewport: Viewport = {
