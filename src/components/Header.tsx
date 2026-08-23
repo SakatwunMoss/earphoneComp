@@ -17,6 +17,7 @@ function SearchBoxFallback() {
 
 const NAV_LINKS = [
   { href: "/", label: "ホーム" },
+  { href: "/columns", label: "コラム" },
   { href: "/about", label: "サイトについて" },
 ] as const;
 
