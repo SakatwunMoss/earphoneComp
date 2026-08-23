@@ -4,6 +4,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { Footer } from "@/components/Footer";
 import { Header } from "@/components/Header";
 import {
+  OG_IMAGE,
   OG_IMAGE_PATH,
   SITE_DESCRIPTION,
   SITE_NAME,
@@ -35,7 +36,8 @@ export const metadata: Metadata = {
   openGraph: {
     title: SITE_TITLE,
     description: SITE_DESCRIPTION,
-    images: [OG_IMAGE_PATH],
+    url: SITE_URL,
+    images: [OG_IMAGE],
     type: "website",
     locale: "ja_JP",
     siteName: SITE_NAME,
