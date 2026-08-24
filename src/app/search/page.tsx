@@ -4,6 +4,7 @@ import Link from "next/link";
 
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { FilterPanel } from "@/components/FilterPanel";
+import { PriceDisclaimer } from "@/components/PriceDisclaimer";
 import { SearchCompareGrid } from "@/components/SearchCompareGrid";
 import {
   applyEarphoneFilters,
@@ -109,10 +110,11 @@ export default async function SearchPage({ searchParams }: PageProps) {
         <h1 className="mb-2 text-2xl font-semibold tracking-tight text-gray-900 sm:text-3xl">
           「{keyword}」の検索結果
         </h1>
-        <p className="mb-8 text-sm text-gray-600">
+        <p className="mb-4 text-sm text-gray-600">
           {earphones.length} 件
           {!isSupabaseConfigured ? "（Supabase 未設定）" : null}
         </p>
+        <PriceDisclaimer className="mb-8" />
 
         <FilterPanel categories={categories}>
           {earphones.length === 0 ? (

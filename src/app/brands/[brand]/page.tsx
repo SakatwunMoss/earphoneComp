@@ -6,6 +6,7 @@ import { notFound } from "next/navigation";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { BrandCompareGrid } from "@/components/BrandCompareGrid";
 import { FilterPanel } from "@/components/FilterPanel";
+import { PriceDisclaimer } from "@/components/PriceDisclaimer";
 import {
   applyEarphoneFilters,
   parseEarphoneFilters,
@@ -130,7 +131,7 @@ export default async function BrandPage({ params, searchParams }: PageProps) {
           items={[{ label: "ホーム", href: "/" }, { label: brand }]}
         />
 
-        <header className="mb-8">
+        <header className="mb-4">
           <h1 className="text-3xl font-semibold tracking-tight text-gray-900 sm:text-4xl">
             {brand}
           </h1>
@@ -141,6 +142,7 @@ export default async function BrandPage({ params, searchParams }: PageProps) {
             </p>
           ) : null}
         </header>
+        <PriceDisclaimer className="mb-8" />
 
         {!isSupabaseConfigured ? (
           <p className="rounded-xl border border-teal-200 bg-teal-50 px-4 py-3 text-sm text-teal-800">
