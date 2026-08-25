@@ -7,6 +7,7 @@ import { Card } from "@/components/Card";
 import { RemoteImage } from "@/components/RemoteImage";
 import { brandFromUrlParam, brandPagePath, earphonePagePath } from "@/lib/brand-url";
 import { formatBoolean, formatPrice } from "@/lib/format";
+import { shopLabelFromUrl } from "@/lib/shop-label";
 import { createPageMetadata } from "@/lib/site-metadata";
 import { logSupabaseError } from "@/lib/supabase-error";
 import { supabase } from "@/lib/supabase";
@@ -199,7 +200,34 @@ export default async function EarphoneDetailPage({ params }: PageProps) {
             </table>
           </div>
 
-          {earphone.url ? (
+          {earphone.rakuten_url ? (
+            <div className="mt-6 flex flex-wrap gap-3">
+              {earphone.url ? (
+                <a
+                  href={earphone.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-baseline gap-2 rounded-lg border border-teal-200 bg-teal-50 px-4 py-2.5 text-sm font-medium text-teal-700 transition-colors hover:border-teal-300 hover:bg-teal-100"
+                >
+                  <span>{shopLabelFromUrl(earphone.url)}で見る</span>
+                  <span className="font-normal tracking-tight text-teal-600/80">
+                    {formatPrice(earphone.price)}
+                  </span>
+                </a>
+              ) : null}
+              <a
+                href={earphone.rakuten_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-baseline gap-2 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-medium text-rose-700 transition-colors hover:border-rose-300 hover:bg-rose-100"
+              >
+                <span>楽天市場で見る</span>
+                <span className="font-normal tracking-tight text-rose-600/80">
+                  {formatPrice(earphone.rakuten_price)}
+                </span>
+              </a>
+            </div>
+          ) : earphone.url ? (
             <p className="mt-6">
               <a
                 href={earphone.url}

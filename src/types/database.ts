@@ -4,6 +4,12 @@ export type Earphone = {
   brand: string;
   price: number | null;
   url: string | null;
+  /** 楽天市場アフィリエイトリンク（同期スクリプトが更新） */
+  rakuten_url: string | null;
+  /** 楽天市場での価格 */
+  rakuten_price: number | null;
+  /** 楽天リンク最終同期日時 */
+  rakuten_updated_at: string | null;
   image_url: string | null;
   category: string;
   noise_cancelling: boolean;
