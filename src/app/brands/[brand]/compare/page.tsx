@@ -102,6 +102,9 @@ export default async function BrandComparePage({
     return (
       <div className="flex flex-1 flex-col px-6 py-10">
         <main className="mx-auto w-full max-w-6xl">
+          <h1 className="mb-4 text-3xl font-semibold tracking-tight text-gray-900 sm:text-4xl">
+            {brand}の比較
+          </h1>
           <p className="rounded-xl border border-teal-200 bg-teal-50 px-4 py-3 text-sm text-teal-800">
             Supabase の環境変数が未設定です。
           </p>
@@ -114,6 +117,9 @@ export default async function BrandComparePage({
     return (
       <div className="flex flex-1 flex-col px-6 py-10">
         <main className="mx-auto w-full max-w-6xl">
+          <h1 className="mb-4 text-3xl font-semibold tracking-tight text-gray-900 sm:text-4xl">
+            {brand}の比較
+          </h1>
           <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-red-700">
             データの取得に失敗しました。しばらくしてから再度お試しください。
           </p>

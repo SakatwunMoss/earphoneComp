@@ -1,13 +1,21 @@
 export const dynamic = "force-dynamic";
 
+import type { Metadata } from "next";
 import Image from "next/image";
 
 import { BrandLogo } from "@/components/BrandLogo";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { Card } from "@/components/Card";
 import { brandPagePath } from "@/lib/brand-url";
+import { SITE_URL } from "@/lib/site-metadata";
 import { logSupabaseError } from "@/lib/supabase-error";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
+
+export const metadata: Metadata = {
+  alternates: {
+    canonical: SITE_URL,
+  },
+};
 
 type BrandSummary = {
   brand: string;

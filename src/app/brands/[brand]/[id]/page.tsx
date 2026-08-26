@@ -86,7 +86,7 @@ export default async function EarphoneDetailPage({ params }: PageProps) {
             <div className="mb-6 max-w-md">
               <RemoteImage
                 src={earphone.image_url}
-                alt={earphone.name}
+                alt={`${earphone.name} 商品画像`}
                 className="h-auto w-full max-w-md object-contain"
                 width={448}
                 height={448}

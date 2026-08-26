@@ -22,15 +22,20 @@ export const OG_IMAGE = {
 export function createPageMetadata(options: {
   title: string;
   description?: string;
+  /** クエリなしのパス（例: /brands/Sony）。canonical / OGP の正準 URL に使う */
   path?: string;
 }): Metadata {
   const description = options.description ?? SITE_DESCRIPTION;
-  const url = options.path ? new URL(options.path, SITE_URL) : SITE_URL;
+  const canonicalPath = options.path ?? "/";
+  const url = new URL(canonicalPath, SITE_URL);
   const fullTitle = `${options.title} | ${SITE_NAME}`;
 
   return {
     title: options.title,
     description,
+    alternates: {
+      canonical: url,
+    },
     openGraph: {
       title: fullTitle,
       description,

@@ -1,12 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { createPageMetadata } from "@/lib/site-metadata";
+
 import { ContactForm } from "./ContactForm";
 
-export const metadata: Metadata = {
-  title: "お問い合わせ | Earphone Compare",
+export const metadata: Metadata = createPageMetadata({
+  title: "お問い合わせ",
   description: "Earphone Compareへのお問い合わせ",
-};
+  path: "/contact",
+});
 
 export default function ContactPage() {
   return (

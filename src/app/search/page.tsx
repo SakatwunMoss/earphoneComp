@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic";
 
+import type { Metadata } from "next";
 import Link from "next/link";
 
 import { Breadcrumbs } from "@/components/Breadcrumbs";
@@ -12,6 +13,7 @@ import {
   parseEarphoneFilters,
   uniqueSortedCategories,
 } from "@/lib/earphone-filters";
+import { createPageMetadata } from "@/lib/site-metadata";
 import { logSupabaseError } from "@/lib/supabase-error";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import type { Earphone } from "@/types/database";
@@ -25,6 +27,14 @@ type PageProps = {
     sort?: string | string[];
   }>;
 };
+
+/** 絞り込み・並び替え・検索語付き URL でも canonical は /search を指す */
+export const metadata: Metadata = createPageMetadata({
+  title: "検索",
+  description:
+    "イヤホンをキーワード・カテゴリ・価格などで検索。気になる機種を比較できます。",
+  path: "/search",
+});
 
 function getQuery(q: string | string[] | undefined): string {
   if (Array.isArray(q)) {
@@ -88,6 +98,9 @@ export default async function SearchPage({ searchParams }: PageProps) {
           <Breadcrumbs
             items={[{ label: "ホーム", href: "/" }, { label: "検索", href: "/search" }]}
           />
+          <h1 className="mb-4 text-2xl font-semibold tracking-tight text-gray-900 sm:text-3xl">
+            検索
+          </h1>
           <p className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-8 text-center text-gray-600">
             検索キーワードを入力してください
           </p>

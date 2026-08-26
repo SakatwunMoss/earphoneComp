@@ -36,7 +36,7 @@ export function ColumnRelatedProducts({
             >
               <RemoteImage
                 src={earphone.image_url}
-                alt={earphone.name}
+                alt={`${earphone.name} 商品画像`}
                 className="h-40 w-full object-cover"
                 width={400}
                 height={160}

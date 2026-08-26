@@ -1,10 +1,13 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 
-export const metadata: Metadata = {
-  title: "運営者情報 | Earphone Compare",
+import { createPageMetadata } from "@/lib/site-metadata";
+
+export const metadata: Metadata = createPageMetadata({
+  title: "運営者情報",
   description: "Earphone Compareの運営者情報",
-};
+  path: "/about",
+});
 
 export default function AboutPage() {
   return (

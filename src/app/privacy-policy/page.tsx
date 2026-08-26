@@ -1,10 +1,13 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 
-export const metadata: Metadata = {
-  title: "プライバシーポリシー | Earphone Compare",
+import { createPageMetadata } from "@/lib/site-metadata";
+
+export const metadata: Metadata = createPageMetadata({
+  title: "プライバシーポリシー",
   description: "Earphone Compareのプライバシーポリシー",
-};
+  path: "/privacy-policy",
+});
 
 export default function PrivacyPolicyPage() {
   return (

@@ -21,7 +21,7 @@ function CompareEarphoneImage({ earphone }: { earphone: Earphone }) {
     <div className="flex justify-center">
       <RemoteImage
         src={earphone.image_url}
-        alt={earphone.name}
+        alt={`${earphone.name} 商品画像`}
         className={IMAGE_CELL_CLASS}
         width={120}
         height={120}

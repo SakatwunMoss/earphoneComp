@@ -49,7 +49,7 @@ export function EarphoneGrid({
                 <Link href={detailHref} className="block transition-opacity hover:opacity-95">
                   <RemoteImage
                     src={earphone.image_url}
-                    alt={earphone.name}
+                    alt={`${earphone.name} 商品画像`}
                     className="h-48 w-full object-cover"
                     width={400}
                     height={192}
@@ -73,7 +73,7 @@ export function EarphoneGrid({
               <Card href={detailHref} className="overflow-hidden p-0">
                 <RemoteImage
                   src={earphone.image_url}
-                  alt={earphone.name}
+                  alt={`${earphone.name} 商品画像`}
                   className="h-48 w-full object-cover"
                   width={400}
                   height={192}
