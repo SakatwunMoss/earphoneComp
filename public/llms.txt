@@ -1,0 +1,23 @@
+# Earphone Compare
+
+> ブランドや形状・価格などの条件からイヤホン製品を一覧・比較できる情報サイトです。購入の参考になるスペック比較と選び方コラムを提供しています。
+
+## 主要ページ
+
+- [ホーム（ブランド一覧）](https://earphone-comp.vercel.app/): 登録ブランド一覧からイヤホンを探せます
+- [検索・端末一覧](https://earphone-comp.vercel.app/search): キーワード・カテゴリ・価格などで機種を絞り込み検索できます
+- [スペック比較](https://earphone-comp.vercel.app/compare): 選択したイヤホンを価格・NC・バッテリーなどで横並び比較できます
+- [コラム記事一覧](https://earphone-comp.vercel.app/columns): イヤホン選びに役立つ記事一覧です
+- [運営者情報](https://earphone-comp.vercel.app/about): サイトの目的と運営者について
+- [お問い合わせ](https://earphone-comp.vercel.app/contact): ご連絡用フォーム
+- [プライバシーポリシー](https://earphone-comp.vercel.app/privacy-policy): 個人情報の取り扱いについて
+
+ブランド別の端末一覧は `/brands/{brand}`、個別機種の詳細は `/brands/{brand}/{id}` にあります。サイトマップは [sitemap.xml](https://earphone-comp.vercel.app/sitemap.xml) を参照してください。
+
+## 更新頻度・データソース
+
+掲載価格は楽天市場および Yahoo!ショッピングの商品検索 API から定期取得し、日次で反映しています。スペックや製品情報はサイト側のデータベースを元にしています。
+
+## 免責事項
+
+表示価格は変動する可能性があります。最新の価格・在庫・商品条件は、各ページ内の販売リンク先（楽天市場・Yahoo!ショッピング等）で必ずご確認ください。当サイトの情報は購入の参考であり、正確性を保証するものではありません。
