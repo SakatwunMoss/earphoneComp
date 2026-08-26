@@ -118,7 +118,7 @@ export default async function ComparePage({ searchParams }: PageProps) {
     <div className="flex flex-1 flex-col px-6 py-10">
       <main className="mx-auto w-full max-w-6xl">
         <Breadcrumbs
-          items={[{ label: "ホーム", href: "/" }, { label: "比較" }]}
+          items={[{ label: "ホーム", href: "/" }, { label: "比較", href: "/compare" }]}
         />
 
         <header className="mb-8">

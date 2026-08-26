@@ -6,6 +6,7 @@ import { notFound } from "next/navigation";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { BrandCompareGrid } from "@/components/BrandCompareGrid";
 import { FilterPanel } from "@/components/FilterPanel";
+import { JsonLd } from "@/components/JsonLd";
 import { PriceDisclaimer } from "@/components/PriceDisclaimer";
 import {
   applyEarphoneFilters,
@@ -14,6 +15,7 @@ import {
   type EarphoneFilterState,
 } from "@/lib/earphone-filters";
 import { brandFromUrlParam, brandPagePath } from "@/lib/brand-url";
+import { buildItemListJsonLd } from "@/lib/json-ld";
 import { createPageMetadata } from "@/lib/site-metadata";
 import { logSupabaseError } from "@/lib/supabase-error";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
@@ -124,11 +126,17 @@ export default async function BrandPage({ params, searchParams }: PageProps) {
   const hasActiveFilters =
     filters.categories.length > 0 || filters.nc || filters.price != null;
 
+  const itemListJsonLd =
+    earphones && earphones.length > 0
+      ? buildItemListJsonLd(brand, earphones)
+      : null;
+
   return (
     <div className="flex flex-1 flex-col px-6 py-10">
       <main className="mx-auto w-full max-w-6xl">
+        {itemListJsonLd ? <JsonLd data={itemListJsonLd} /> : null}
         <Breadcrumbs
-          items={[{ label: "ホーム", href: "/" }, { label: brand }]}
+          items={[{ label: "ホーム", href: "/" }, { label: brand, href: brandPagePath(brand) }]}
         />
 
         <header className="mb-4">

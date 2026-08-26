@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 
-export const SITE_URL = new URL("https://earphone-comp.vercel.app");
+/** 本番ベース URL。NEXT_PUBLIC_SITE_URL があれば優先 */
+export const SITE_URL = new URL(
+  process.env.NEXT_PUBLIC_SITE_URL?.trim() || "https://earphone-comp.vercel.app",
+);
 export const SITE_NAME = "Earphone Compare";
 export const SITE_TITLE = "イヤホン比較サイト | Earphone Compare";
 export const SITE_DESCRIPTION =

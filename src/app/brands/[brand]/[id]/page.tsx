@@ -4,9 +4,11 @@ import { notFound } from "next/navigation";
 
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { Card } from "@/components/Card";
+import { JsonLd } from "@/components/JsonLd";
 import { RemoteImage } from "@/components/RemoteImage";
 import { brandFromUrlParam, brandPagePath, earphonePagePath } from "@/lib/brand-url";
 import { formatBoolean, formatPrice } from "@/lib/format";
+import { buildProductJsonLd } from "@/lib/json-ld";
 import { shopLabelFromUrl } from "@/lib/shop-label";
 import { createPageMetadata } from "@/lib/site-metadata";
 import { logSupabaseError } from "@/lib/supabase-error";
@@ -65,14 +67,17 @@ export default async function EarphoneDetailPage({ params }: PageProps) {
     notFound();
   }
 
+  const productJsonLd = buildProductJsonLd(earphone);
+
   return (
     <div className="flex flex-1 flex-col px-6 py-10">
       <main className="mx-auto w-full max-w-6xl">
+        <JsonLd data={productJsonLd} />
         <Breadcrumbs
           items={[
             { label: "ホーム", href: "/" },
             { label: brand, href: brandPagePath(brand) },
-            { label: earphone.name },
+            { label: earphone.name, href: earphonePagePath(brand, id) },
           ]}
         />
 

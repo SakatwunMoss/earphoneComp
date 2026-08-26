@@ -82,7 +82,7 @@ export default async function Home() {
 
       <div className="px-6 py-10">
         <main className="mx-auto w-full max-w-6xl">
-          <Breadcrumbs items={[{ label: "ホーム" }]} />
+          <Breadcrumbs items={[{ label: "ホーム", href: "/" }]} />
 
           {!isSupabaseConfigured ? (
             <p className="rounded-xl border border-teal-200 bg-teal-50 px-4 py-3 text-sm text-teal-800">

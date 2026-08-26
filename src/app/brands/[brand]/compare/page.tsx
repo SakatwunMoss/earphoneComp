@@ -137,7 +137,7 @@ export default async function BrandComparePage({
           items={[
             { label: "ホーム", href: "/" },
             { label: brand, href: brandPagePath(brand) },
-            { label: "比較" },
+            { label: "比較", href: brandComparePagePath(brand, ids) },
           ]}
         />
 

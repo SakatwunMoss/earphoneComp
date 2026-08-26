@@ -86,7 +86,7 @@ export default async function SearchPage({ searchParams }: PageProps) {
       <div className="flex flex-1 flex-col px-6 py-10">
         <main className="mx-auto w-full max-w-6xl">
           <Breadcrumbs
-            items={[{ label: "ホーム", href: "/" }, { label: "検索" }]}
+            items={[{ label: "ホーム", href: "/" }, { label: "検索", href: "/search" }]}
           />
           <p className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-8 text-center text-gray-600">
             検索キーワードを入力してください
@@ -105,7 +105,7 @@ export default async function SearchPage({ searchParams }: PageProps) {
     <div className="flex flex-1 flex-col px-6 py-10">
       <main className="mx-auto w-full max-w-6xl">
         <Breadcrumbs
-          items={[{ label: "ホーム", href: "/" }, { label: "検索" }]}
+          items={[{ label: "ホーム", href: "/" }, { label: "検索", href: "/search" }]}
         />
         <h1 className="mb-2 text-2xl font-semibold tracking-tight text-gray-900 sm:text-3xl">
           「{keyword}」の検索結果
