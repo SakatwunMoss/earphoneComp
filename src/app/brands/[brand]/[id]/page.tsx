@@ -205,7 +205,7 @@ export default async function EarphoneDetailPage({ params }: PageProps) {
             </table>
           </div>
 
-          {earphone.rakuten_url ? (
+          {earphone.rakuten_url || earphone.yahoo_url ? (
             <div className="mt-6 flex flex-wrap gap-3">
               {earphone.url ? (
                 <a
@@ -220,17 +220,32 @@ export default async function EarphoneDetailPage({ params }: PageProps) {
                   </span>
                 </a>
               ) : null}
-              <a
-                href={earphone.rakuten_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-baseline gap-2 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-medium text-rose-700 transition-colors hover:border-rose-300 hover:bg-rose-100"
-              >
-                <span>楽天市場で見る</span>
-                <span className="font-normal tracking-tight text-rose-600/80">
-                  {formatPrice(earphone.rakuten_price)}
-                </span>
-              </a>
+              {earphone.rakuten_url ? (
+                <a
+                  href={earphone.rakuten_url}
+                  target="_blank"
+                  rel="nofollow sponsored noopener"
+                  className="inline-flex items-baseline gap-2 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-medium text-rose-700 transition-colors hover:border-rose-300 hover:bg-rose-100"
+                >
+                  <span>楽天市場で見る</span>
+                  <span className="font-normal tracking-tight text-rose-600/80">
+                    {formatPrice(earphone.rakuten_price)}
+                  </span>
+                </a>
+              ) : null}
+              {earphone.yahoo_url ? (
+                <a
+                  href={earphone.yahoo_url}
+                  target="_blank"
+                  rel="nofollow sponsored noopener"
+                  className="inline-flex items-baseline gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-medium text-red-700 transition-colors hover:border-red-300 hover:bg-red-100"
+                >
+                  <span>Yahoo!ショッピングで見る</span>
+                  <span className="font-normal tracking-tight text-red-600/80">
+                    {formatPrice(earphone.yahoo_price)}
+                  </span>
+                </a>
+              ) : null}
             </div>
           ) : earphone.url ? (
             <p className="mt-6">
