@@ -10,6 +10,12 @@ export type Earphone = {
   rakuten_price: number | null;
   /** 楽天リンク最終同期日時 */
   rakuten_updated_at: string | null;
+  /** Yahoo!ショッピングアフィリエイトリンク（同期スクリプトが更新） */
+  yahoo_url: string | null;
+  /** Yahoo!ショッピングでの価格 */
+  yahoo_price: number | null;
+  /** Yahoo!ショッピングリンク最終同期日時 */
+  yahoo_updated_at: string | null;
   image_url: string | null;
   category: string;
   noise_cancelling: boolean;

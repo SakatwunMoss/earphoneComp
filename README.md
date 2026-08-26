@@ -61,3 +61,54 @@ npm run sync-rakuten-links
 | `RAKUTEN_ORIGIN` | （任意）Web application 利用時の許可ドメイン Origin |
 
 マッチしなかった機種は DB を変更せずスキップし、ログに理由を残します。
+
+## Yahoo!ショッピングアフィリエイトリンク同期
+
+`earphones` テーブルの各機種を Yahoo!ショッピング商品検索 API（v3）で探し、見つかった商品のアフィリエイト URL と価格を `yahoo_url` / `yahoo_price` / `yahoo_updated_at` に日次で反映します（`url` / `price` は公式・現状ショップ用として変更しません）。
+
+バリューコマース経由のアフィリエイトリンクは、API リクエスト時に `affiliate_type=vc` と URL エンコード済みの `affiliate_id` を指定して取得します。
+
+### ローカル実行
+
+`.env.local` に以下を設定したうえで:
+
+```bash
+# 結果だけ確認（DBは更新しない）
+DRY_RUN=true npm run sync-yahoo-links
+
+# 実際に更新する
+npm run sync-yahoo-links
+```
+
+| 環境変数 | 説明 |
+| --- | --- |
+| `SUPABASE_URL` | Supabase プロジェクト URL（未設定時は `NEXT_PUBLIC_SUPABASE_URL`） |
+| `SUPABASE_SERVICE_ROLE_KEY` | RLS をバイパスする Service Role Key（書き込み権限が必要） |
+| `YAHOO_APP_ID` | Yahoo!デベロッパーネットワークの Client ID（`appid`） |
+| `YAHOO_CLIENT_ID` | （任意）`YAHOO_APP_ID` 未設定時に利用 |
+| `VC_SID` | バリューコマース sid |
+| `VC_PID` | バリューコマース pid |
+| `DRY_RUN` | `true` のとき DB 更新せずログのみ |
+| `SYNC_LIMIT` | （任意）処理する機種数の上限（動作確認用） |
+
+Client ID は [Yahoo!デベロッパーネットワーク](https://developer.yahoo.co.jp/) でアプリ登録して取得してください。
+
+### GitHub Actions
+
+ワークフロー: [`.github/workflows/sync-yahoo-links.yml`](.github/workflows/sync-yahoo-links.yml)
+
+- **スケジュール**: 毎日 04:00 JST（cron `0 19 * * *` UTC）
+- **手動実行**: Actions タブ →「Sync Yahoo Shopping affiliate links (earphones)」→ Run workflow  
+  - `dry_run` を `true` にすると更新せず結果だけログ出力
+
+リポジトリの **Settings → Secrets and variables → Actions** に次を登録してください。
+
+| Secret 名 | 用途 |
+| --- | --- |
+| `SUPABASE_URL` | Supabase プロジェクト URL |
+| `SUPABASE_SERVICE_ROLE_KEY` | RLS をバイパスする書き込み用 Service Role Key |
+| `YAHOO_APP_ID` または `YAHOO_CLIENT_ID` | Yahoo!デベロッパーネットワーク Client ID（どちらか一方で可） |
+| `VC_SID` | バリューコマース sid |
+| `VC_PID` | バリューコマース pid |
+
+マッチしなかった機種は DB を変更せずスキップし、ログに理由を残します。

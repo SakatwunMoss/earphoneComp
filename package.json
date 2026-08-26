@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "fetch-images": "tsx scripts/fetch-product-images.ts",
-    "sync-rakuten-links": "node scripts/sync-rakuten-links.mjs"
+    "sync-rakuten-links": "node scripts/sync-rakuten-links.mjs",
+    "sync-yahoo-links": "node scripts/sync-yahoo-links.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",
