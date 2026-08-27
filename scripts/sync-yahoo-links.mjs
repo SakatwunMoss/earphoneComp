@@ -17,6 +17,7 @@
 //   VC_PID                     バリューコマース pid
 //   DRY_RUN                    "true"を指定すると実際の更新はせず、結果だけログ出力する
 //   SYNC_LIMIT                 （任意）処理する機種数の上限
+//   DEBUG                      "true"を指定するとYahoo APIリクエスト/エラーの詳細を出力する
 
 import { createClient } from "@supabase/supabase-js";
 import { existsSync, readFileSync } from "fs";
@@ -54,6 +55,7 @@ const YAHOO_APP_ID =
 const VC_SID = process.env.VC_SID?.trim();
 const VC_PID = process.env.VC_PID?.trim();
 const DRY_RUN = process.env.DRY_RUN === "true";
+const DEBUG = process.env.DEBUG === "true";
 const SYNC_LIMIT = process.env.SYNC_LIMIT
   ? Number.parseInt(process.env.SYNC_LIMIT, 10)
   : null;
@@ -93,7 +95,7 @@ const VC_AFFILIATE_ID = encodeURIComponent(
 );
 
 // Yahoo!ショッピングAPIはレート制限があるため、リクエスト間隔を空ける
-const REQUEST_INTERVAL_MS = 1100;
+const REQUEST_INTERVAL_MS = 2000;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -114,8 +116,134 @@ function buildSearchKeyword(brand, name) {
     .trim();
 }
 
-async function searchYahoo(keyword) {
-  const url =
+function maskSecret(value, visiblePrefix = 4) {
+  if (!value) return "(未設定)";
+  if (value.length <= visiblePrefix) return "***";
+  return `${value.slice(0, visiblePrefix)}...(${value.length}文字)`;
+}
+
+function parseYahooErrorBody(bodyText) {
+  try {
+    return JSON.parse(bodyText);
+  } catch {
+    return null;
+  }
+}
+
+function extractYahooErrorMessage(parsed, bodyText) {
+  if (parsed == null) return null;
+  const message =
+    parsed.message ??
+    parsed.Message ??
+    parsed.error ??
+    parsed.Error?.Message ??
+    parsed.Error?.message;
+  return message != null ? String(message) : null;
+}
+
+function diagnoseYahooApiError(status, bodyText, parsed) {
+  const message = extractYahooErrorMessage(parsed, bodyText) ?? bodyText ?? "";
+  const combined = `${message}\n${bodyText}`.toLowerCase();
+
+  const credentialPatterns = [
+    "credential",
+    "valid app",
+    "appid",
+    "authentication",
+    "unauthorized",
+    "access denied",
+    "invalid client",
+    "please provide valid",
+    "your request was forbidden",
+    "request was forbidden",
+  ];
+  const affiliatePatterns = [
+    "affiliate",
+    "affiliate_id",
+    "affiliate_type",
+    "valuecommerce",
+    "value commerce",
+    "vc_sid",
+    "vc_pid",
+    "バリューコマース",
+  ];
+
+  if (status === 401 || credentialPatterns.some((p) => combined.includes(p))) {
+    return {
+      category: "credentials",
+      summary:
+        "Client ID（YAHOO_APP_ID）の認証・権限不足の可能性が高いです",
+      hints: [
+        "Yahoo!デベロッパーネットワークで「クライアントサイドアプリケーション」として登録した Client ID を使用しているか確認",
+        "Shopping Web API（itemSearch）が利用可能なアプリか確認",
+        "サーバーサイド登録の Client ID をクライアントサイド用に差し替えた場合、旧 ID が残っていないか .env.local / GitHub Secrets を確認",
+      ],
+    };
+  }
+
+  if (affiliatePatterns.some((p) => combined.includes(p))) {
+    return {
+      category: "affiliate",
+      summary:
+        "バリューコマース（VC_SID / VC_PID / affiliate_id）絡みの問題の可能性が高いです",
+      hints: [
+        "VC_SID / VC_PID がバリューコマース管理画面の値と一致しているか確認",
+        "affiliate_type=vc と affiliate_id の形式が Yahoo API 仕様どおりか確認",
+        "バリューコマース側で Yahoo!ショッピング アフィリエイトが有効か確認",
+      ],
+    };
+  }
+
+  if (status === 403) {
+    return {
+      category: "forbidden_unknown",
+      summary:
+        "403 Forbidden。認証（Client ID）とアフィリエイト設定の両方を確認してください",
+      hints: [
+        "レスポンス message に credentials 系の文言があれば Client ID を優先確認",
+        "affiliate 系の文言があれば VC_SID / VC_PID を優先確認",
+      ],
+    };
+  }
+
+  return {
+    category: "unknown",
+    summary: "Yahoo Shopping API のエラー。レスポンス本文を確認してください",
+    hints: [],
+  };
+}
+
+function logYahooApiError({ status, bodyText, keyword, requestUrl }) {
+  const parsed = parseYahooErrorBody(bodyText);
+  const message = extractYahooErrorMessage(parsed, bodyText);
+  const diagnosis = diagnoseYahooApiError(status, bodyText, parsed);
+
+  console.error("[Yahoo Shopping API エラー]");
+  console.error(`  HTTP status: ${status}`);
+  console.error(`  レスポンス本文: ${bodyText}`);
+  if (message != null && message !== bodyText) {
+    console.error(`  message: ${message}`);
+  }
+  console.error(`  原因判定 [${diagnosis.category}]: ${diagnosis.summary}`);
+  for (const hint of diagnosis.hints) {
+    console.error(`    - ${hint}`);
+  }
+  if (keyword) {
+    console.error(`  検索キーワード: ${keyword}`);
+  }
+  if (DEBUG) {
+    console.error(`  appid: ${maskSecret(YAHOO_APP_ID)}`);
+    console.error(`  VC_SID: ${VC_SID}, VC_PID: ${VC_PID}`);
+    if (requestUrl) {
+      console.error(
+        `  リクエストURL: ${requestUrl.replace(YAHOO_APP_ID, maskSecret(YAHOO_APP_ID))}`,
+      );
+    }
+  }
+}
+
+function buildYahooSearchUrl(keyword) {
+  return (
     `${YAHOO_ENDPOINT}?` +
     [
       `appid=${encodeURIComponent(YAHOO_APP_ID)}`,
@@ -125,13 +253,38 @@ async function searchYahoo(keyword) {
       "results=30",
       "sort=-review_count",
       "condition=new",
-    ].join("&");
+    ].join("&")
+  );
+}
+
+async function searchYahoo(keyword) {
+  const url = buildYahooSearchUrl(keyword);
+
+  if (DEBUG) {
+    console.log(
+      `[DEBUG] Yahoo itemSearch: keyword="${keyword}", appid=${maskSecret(YAHOO_APP_ID)}`,
+    );
+  }
 
   const res = await fetch(url);
+  const bodyText = await res.text();
+
   if (!res.ok) {
-    throw new Error(`Yahoo Shopping API error: ${res.status} ${await res.text()}`);
+    logYahooApiError({
+      status: res.status,
+      bodyText,
+      keyword,
+      requestUrl: url,
+    });
+    throw new Error(`Yahoo Shopping API error: ${res.status} ${bodyText}`);
   }
-  const data = await res.json();
+
+  const data = parseYahooErrorBody(bodyText) ?? {};
+  if (DEBUG) {
+    console.log(
+      `[DEBUG] Yahoo itemSearch OK: hits=${(data.hits ?? []).length}件`,
+    );
+  }
   return data.hits ?? [];
 }
 
