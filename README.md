@@ -10,6 +10,31 @@ npm run dev
 
 [http://localhost:3000](http://localhost:3000) を開いてください。
 
+## Google Analytics (GA4)
+
+gtag.js による計測を有効にするには、計測 ID を環境変数 `NEXT_PUBLIC_GA_ID` に設定してください。
+
+### ローカル
+
+`.env.local` に追加:
+
+```bash
+NEXT_PUBLIC_GA_ID=G-XXXXXXXXXX
+```
+
+### Vercel（必須）
+
+本番・プレビューでも計測するため、Vercel ダッシュボードで環境変数を設定してください（コード側では設定しません）。
+
+1. [Vercel Dashboard](https://vercel.com/) → 対象プロジェクト → **Settings** → **Environment Variables**
+2. 次を追加:
+   - **Key**: `NEXT_PUBLIC_GA_ID`
+   - **Value**: `G-3RFCQ8DJB6`
+   - **Environments**: Production / Preview / Development すべてにチェック
+3. 保存後、反映のために **再デプロイ**（Deployments → 最新の … → Redeploy）を実行
+
+`NEXT_PUBLIC_` 付き変数はビルド時に埋め込まれるため、追加・変更後は再デプロイが必要です。
+
 ## 楽天アフィリエイトリンク同期
 
 `earphones` テーブルの各機種を楽天市場商品検索 API で探し、見つかった商品のアフィリエイト URL と価格を `rakuten_url` / `rakuten_price` / `rakuten_updated_at` に日次で反映します（`url` / `price` は公式・現状ショップ用として変更しません）。
