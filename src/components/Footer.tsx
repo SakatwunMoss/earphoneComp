@@ -40,6 +40,19 @@ export function Footer() {
         <p className="border-t border-gray-200 pt-4 text-xs text-gray-500">
           © 2026 Earphone Compare
         </p>
+
+        {/* Begin Yahoo! JAPAN Web Services Attribution Snippet */}
+        <span style={{ margin: "15px 15px 15px 15px" }}>
+          <a
+            href="https://developer.yahoo.co.jp/sitemap/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm text-gray-600 transition-colors hover:text-teal-700"
+          >
+            Webサービス by Yahoo! JAPAN
+          </a>
+        </span>
+        {/* End Yahoo! JAPAN Web Services Attribution Snippet */}
       </div>
     </footer>
   );
