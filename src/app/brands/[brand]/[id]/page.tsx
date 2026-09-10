@@ -272,8 +272,15 @@ export default async function EarphoneDetailPage({ params }: PageProps) {
             >
               この機種について
             </h2>
-            <div className="max-w-2xl space-y-4 text-sm leading-relaxed text-gray-700 whitespace-pre-line">
-              {earphone.long_description.trim()}
+            <div className="max-w-2xl space-y-3 text-sm leading-relaxed text-gray-700">
+              {earphone.long_description
+                .trim()
+                .split(/(?<=。)/)
+                .map((part) => part.trim())
+                .filter(Boolean)
+                .map((sentence, index) => (
+                  <p key={index}>{sentence}</p>
+                ))}
             </div>
           </section>
         ) : null}
