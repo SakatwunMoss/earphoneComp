@@ -30,27 +30,29 @@ export default function ColumnsPage() {
         </p>
 
         <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {columns.map((column) => (
-            <li key={column.slug} className="flex">
-              <Card
-                href={`/columns/${column.slug}`}
-                className="flex h-full w-full flex-col"
-              >
-                <time
-                  dateTime={column.publishedAt}
-                  className="mb-2 text-xs font-medium text-teal-700"
+          {[...columns]
+            .sort((a, b) => b.publishedAt.localeCompare(a.publishedAt))
+            .map((column) => (
+              <li key={column.slug} className="flex">
+                <Card
+                  href={`/columns/${column.slug}`}
+                  className="flex h-full w-full flex-col"
                 >
-                  {formatColumnDate(column.publishedAt)}
-                </time>
-                <h2 className="mb-2 text-lg font-medium tracking-tight text-gray-900">
-                  {column.title}
-                </h2>
-                <p className="text-sm leading-relaxed text-gray-600">
-                  {column.description}
-                </p>
-              </Card>
-            </li>
-          ))}
+                  <time
+                    dateTime={column.publishedAt}
+                    className="mb-2 text-xs font-medium text-teal-700"
+                  >
+                    {formatColumnDate(column.publishedAt)}
+                  </time>
+                  <h2 className="mb-2 text-lg font-medium tracking-tight text-gray-900">
+                    {column.title}
+                  </h2>
+                  <p className="text-sm leading-relaxed text-gray-600">
+                    {column.description}
+                  </p>
+                </Card>
+              </li>
+            ))}
         </ul>
       </main>
     </div>

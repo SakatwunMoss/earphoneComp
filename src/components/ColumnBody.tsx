@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { ReactNode } from "react";
 
 type Block =
@@ -59,17 +60,51 @@ function parseBlocks(markdown: string): Block[] {
 }
 
 function renderInline(text: string): ReactNode[] {
-  const parts = text.split(/(\*\*[^*]+\*\*)/g);
-  return parts.map((part, index) => {
-    if (part.startsWith("**") && part.endsWith("**")) {
-      return (
-        <strong key={index} className="font-medium text-gray-800">
-          {part.slice(2, -2)}
-        </strong>
+  const nodes: ReactNode[] = [];
+  const regex = /\*\*([^*]+)\*\*|\[([^\]]+)\]\(([^)]+)\)/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  let key = 0;
+
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      nodes.push(
+        <span key={key++}>{text.slice(lastIndex, match.index)}</span>,
       );
     }
-    return <span key={index}>{part}</span>;
-  });
+
+    if (match[1] != null) {
+      nodes.push(
+        <strong key={key++} className="font-medium text-gray-800">
+          {match[1]}
+        </strong>,
+      );
+    } else {
+      const label = match[2] ?? "";
+      const href = match[3] ?? "";
+      if (href.startsWith("/")) {
+        nodes.push(
+          <Link
+            key={key++}
+            href={href}
+            className="font-medium text-teal-700 underline decoration-teal-700/30 underline-offset-2 transition-colors hover:text-teal-800 hover:decoration-teal-800/50"
+          >
+            {label}
+          </Link>,
+        );
+      } else {
+        nodes.push(<span key={key++}>{label}</span>);
+      }
+    }
+
+    lastIndex = regex.lastIndex;
+  }
+
+  if (lastIndex < text.length) {
+    nodes.push(<span key={key++}>{text.slice(lastIndex)}</span>);
+  }
+
+  return nodes;
 }
 
 type ColumnBodyProps = {
