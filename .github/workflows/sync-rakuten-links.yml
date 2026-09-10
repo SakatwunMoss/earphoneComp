@@ -11,6 +11,8 @@ on:
         required: false
         default: 'false'
 
+# push では起動しない（Yahoo 同期後の JSON bot commit が楽天同期を再トリガーしない）
+
 jobs:
   sync:
     runs-on: ubuntu-latest

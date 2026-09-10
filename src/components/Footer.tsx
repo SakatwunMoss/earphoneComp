@@ -1,5 +1,7 @@
 import Link from "next/link";
 
+import { formatCatalogUpdatedAt } from "@/lib/earphones-data";
+
 const FOOTER_LINKS = [
   { href: "/", label: "ホーム" },
   { href: "/about", label: "について" },
@@ -8,6 +10,8 @@ const FOOTER_LINKS = [
 ] as const;
 
 export function Footer() {
+  const updatedAt = formatCatalogUpdatedAt();
+
   return (
     <footer className="mt-auto border-t border-gray-200 bg-gray-50">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-6 py-8">
@@ -39,6 +43,10 @@ export function Footer() {
 
         <p className="border-t border-gray-200 pt-4 text-xs text-gray-500">
           © 2026 Earphone Compare
+          <span className="mx-2 text-gray-300" aria-hidden>
+            ·
+          </span>
+          最終更新: {updatedAt}
         </p>
 
         {/* Begin Yahoo! JAPAN Web Services Attribution Snippet */}

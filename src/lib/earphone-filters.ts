@@ -1,3 +1,5 @@
+import type { Earphone } from "@/types/database";
+
 export type SortOption = "price_asc" | "price_desc" | "name_asc";
 
 export type PriceRangeId =
@@ -81,54 +83,85 @@ export function parseEarphoneFilters(
   };
 }
 
-/** PostgREST `.or()` 用に ilike パターンを安全にクォートする */
-export function buildSearchOrFilter(keyword: string): string {
-  const escaped = keyword.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-  const pattern = `%${escaped}%`;
-  return `name.ilike."${pattern}",brand.ilike."${pattern}",description.ilike."${pattern}"`;
+/**
+ * PostgreSQL ILIKE 相当の部分一致。
+ * - 大文字小文字は区別しない（ASCII）
+ * - 全角・半角は正規化しない（ILIKE と同じく区別する）
+ * - null の description は不一致（ILIKE と同じ）
+ */
+export function matchesEarphoneKeyword(
+  earphone: Pick<Earphone, "name" | "brand" | "description">,
+  keyword: string,
+): boolean {
+  const needle = keyword.trim().toLocaleLowerCase("en-US");
+  if (!needle) {
+    return false;
+  }
+
+  const fields = [earphone.name, earphone.brand, earphone.description];
+  return fields.some((field) => {
+    if (field == null) {
+      return false;
+    }
+    return field.toLocaleLowerCase("en-US").includes(needle);
+  });
 }
 
-export function applyEarphoneFilters<
-  T extends {
-    in: (column: string, values: string[]) => T;
-    eq: (column: string, value: boolean) => T;
-    gte: (column: string, value: number) => T;
-    lte: (column: string, value: number) => T;
-    order: (
-      column: string,
-      options?: { ascending?: boolean; nullsFirst?: boolean },
-    ) => T;
-  },
->(query: T, filters: EarphoneFilterState): T {
-  let next = query;
+function compareNullablePrice(
+  a: number | null,
+  b: number | null,
+  ascending: boolean,
+): number {
+  // PostgREST nullsFirst: false → nulls last
+  if (a == null && b == null) return 0;
+  if (a == null) return 1;
+  if (b == null) return -1;
+  return ascending ? a - b : b - a;
+}
+
+export function applyEarphoneFiltersToList(
+  earphones: Earphone[],
+  filters: EarphoneFilterState,
+): Earphone[] {
+  let next = earphones;
 
   if (filters.categories.length > 0) {
-    next = next.in("category", filters.categories);
+    const allowed = new Set(filters.categories);
+    next = next.filter((earphone) => allowed.has(earphone.category));
   }
 
   if (filters.nc) {
-    next = next.eq("noise_cancelling", true);
+    next = next.filter((earphone) => earphone.noise_cancelling);
   }
 
   if (filters.price) {
     const range = PRICE_RANGES.find((r) => r.id === filters.price);
-    if (range?.min != null) {
-      next = next.gte("price", range.min);
-    }
-    if (range?.max != null) {
-      next = next.lte("price", range.max);
+    if (range) {
+      next = next.filter((earphone) => {
+        if (earphone.price == null) {
+          return false;
+        }
+        if (range.min != null && earphone.price < range.min) {
+          return false;
+        }
+        if (range.max != null && earphone.price > range.max) {
+          return false;
+        }
+        return true;
+      });
     }
   }
 
+  const sorted = [...next];
   if (filters.sort === "price_asc") {
-    next = next.order("price", { ascending: true, nullsFirst: false });
+    sorted.sort((a, b) => compareNullablePrice(a.price, b.price, true));
   } else if (filters.sort === "price_desc") {
-    next = next.order("price", { ascending: false, nullsFirst: false });
+    sorted.sort((a, b) => compareNullablePrice(a.price, b.price, false));
   } else {
-    next = next.order("name", { ascending: true });
+    sorted.sort((a, b) => a.name.localeCompare(b.name, "en"));
   }
 
-  return next;
+  return sorted;
 }
 
 export function uniqueSortedCategories(

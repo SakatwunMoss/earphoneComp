@@ -10,6 +10,7 @@
     "fetch-images": "tsx scripts/fetch-product-images.ts",
     "sync-rakuten-links": "node scripts/sync-rakuten-links.mjs",
     "sync-yahoo-links": "node scripts/sync-yahoo-links.mjs",
+    "export-earphones-json": "node scripts/export-earphones-json.mjs",
     "seed-long-descriptions": "node scripts/seed-long-descriptions.mjs",
     "generate-favicons": "node scripts/generate-favicons.mjs"
   },

@@ -1,5 +1,3 @@
-export const dynamic = "force-dynamic";
-
 import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
@@ -48,7 +46,7 @@ export default async function ColumnDetailPage({ params }: PageProps) {
   }
 
   const relatedEarphones = column.relatedProducts
-    ? await getRelatedEarphones(column.relatedProducts)
+    ? getRelatedEarphones(column.relatedProducts)
     : [];
 
   return (

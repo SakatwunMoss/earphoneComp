@@ -1,5 +1,3 @@
-export const dynamic = "force-dynamic";
-
 import type { Metadata } from "next";
 import Image from "next/image";
 
@@ -7,9 +5,8 @@ import { BrandLogo } from "@/components/BrandLogo";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { Card } from "@/components/Card";
 import { brandPagePath } from "@/lib/brand-url";
+import { getBrandSummaries } from "@/lib/earphones-data";
 import { SITE_URL } from "@/lib/site-metadata";
-import { logSupabaseError } from "@/lib/supabase-error";
-import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 
 export const metadata: Metadata = {
   alternates: {
@@ -17,43 +14,8 @@ export const metadata: Metadata = {
   },
 };
 
-type BrandSummary = {
-  brand: string;
-  count: number;
-};
-
-async function getBrands(): Promise<{
-  brands: BrandSummary[] | null;
-  error: string | null;
-}> {
-  if (!supabase) {
-    return { brands: [], error: null };
-  }
-
-  const { data, error } = await supabase.from("earphones").select("brand");
-
-  if (error) {
-    logSupabaseError("Failed to fetch brands:", error);
-    return { brands: null, error: error.message };
-  }
-
-  const rows = (data ?? []) as { brand: string }[];
-  const counts = new Map<string, number>();
-  for (const row of rows) {
-    counts.set(row.brand, (counts.get(row.brand) ?? 0) + 1);
-  }
-
-  const brands = [...counts.entries()]
-    .map(([brand, count]) => ({ brand, count }))
-    .sort((a, b) =>
-      a.brand.localeCompare(b.brand, "en", { sensitivity: "base" }),
-    );
-
-  return { brands, error: null };
-}
-
-export default async function Home() {
-  const { brands, error } = await getBrands();
+export default function Home() {
+  const brands = getBrandSummaries();
 
   return (
     <div className="flex flex-1 flex-col">
@@ -92,16 +54,7 @@ export default async function Home() {
         <main className="mx-auto w-full max-w-6xl">
           <Breadcrumbs items={[{ label: "ホーム", href: "/" }]} />
 
-          {!isSupabaseConfigured ? (
-            <p className="rounded-xl border border-teal-200 bg-teal-50 px-4 py-3 text-sm text-teal-800">
-              Supabase の環境変数が未設定です。.env.local.example
-              を参考に .env.local を作成してください。
-            </p>
-          ) : error ? (
-            <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-red-700">
-              データの取得に失敗しました。しばらくしてから再度お試しください。
-            </p>
-          ) : brands && brands.length > 0 ? (
+          {brands.length > 0 ? (
             <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {brands.map(({ brand, count }) => (
                 <li key={brand} className="flex">

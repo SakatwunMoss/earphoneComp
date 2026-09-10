@@ -7,41 +7,27 @@ import { Card } from "@/components/Card";
 import { JsonLd } from "@/components/JsonLd";
 import { RemoteImage } from "@/components/RemoteImage";
 import { brandFromUrlParam, brandPagePath, earphonePagePath } from "@/lib/brand-url";
+import {
+  getEarphoneById,
+  getStaticEarphoneParams,
+} from "@/lib/earphones-data";
 import { formatBoolean, formatPrice } from "@/lib/format";
 import { buildProductJsonLd } from "@/lib/json-ld";
 import { shopLabelFromUrl } from "@/lib/shop-label";
 import { createPageMetadata } from "@/lib/site-metadata";
-import { logSupabaseError } from "@/lib/supabase-error";
-import { supabase } from "@/lib/supabase";
-import type { Earphone } from "@/types/database";
 
 type PageProps = {
   params: Promise<{ brand: string; id: string }>;
 };
 
-async function getEarphone(id: string): Promise<Earphone | null> {
-  if (!supabase) {
-    return null;
-  }
-
-  const { data, error } = await supabase
-    .from("earphones")
-    .select("*")
-    .eq("id", id)
-    .maybeSingle();
-
-  if (error) {
-    logSupabaseError("Failed to fetch earphone:", error);
-    return null;
-  }
-
-  return data;
+export function generateStaticParams() {
+  return getStaticEarphoneParams();
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { brand: brandParam, id } = await params;
   const brand = brandFromUrlParam(brandParam);
-  const earphone = await getEarphone(id);
+  const earphone = getEarphoneById(id);
 
   if (!earphone || earphone.brand !== brand) {
     return { title: "イヤホンが見つかりません" };
@@ -61,7 +47,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 export default async function EarphoneDetailPage({ params }: PageProps) {
   const { brand: brandParam, id } = await params;
   const brand = brandFromUrlParam(brandParam);
-  const earphone = await getEarphone(id);
+  const earphone = getEarphoneById(id);
 
   if (!earphone || earphone.brand !== brand) {
     notFound();

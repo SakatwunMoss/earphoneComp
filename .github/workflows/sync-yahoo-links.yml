@@ -11,11 +11,20 @@ on:
         required: false
         default: 'false'
 
+# push では起動しない（JSON bot commit が同期を再トリガーしない）
+# ※ [skip ci] は付けない（Vercel の自動デプロイまで止まってしまうため）
+
+permissions:
+  contents: write
+
 jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # bot commit を push できるよう token を明示
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/setup-node@v4
         with:
@@ -35,3 +44,29 @@ jobs:
           VC_SID: ${{ secrets.VC_SID }}
           VC_PID: ${{ secrets.VC_PID }}
           DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+
+      - name: Export earphones JSON
+        if: ${{ (github.event.inputs.dry_run || 'false') != 'true' }}
+        run: node scripts/export-earphones-json.mjs
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
+      - name: Commit and push earphones.json
+        if: ${{ (github.event.inputs.dry_run || 'false') != 'true' }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/data/earphones.json
+          if git diff --staged --quiet; then
+            echo "No changes in earphones.json"
+            exit 0
+          fi
+          # [skip ci] は使わない（Vercel デプロイを止めないため）。
+          # 本 workflow は schedule / workflow_dispatch のみなので push では再起動しない。
+          git commit -m "$(cat <<'EOF'
+          chore(data): refresh earphones.json after Yahoo sync
+
+          EOF
+          )"
+          git push

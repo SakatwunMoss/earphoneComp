@@ -1,5 +1,3 @@
-export const dynamic = "force-dynamic";
-
 import type { Metadata } from "next";
 import Link from "next/link";
 
@@ -7,16 +5,12 @@ import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { FilterPanel } from "@/components/FilterPanel";
 import { PriceDisclaimer } from "@/components/PriceDisclaimer";
 import { SearchCompareGrid } from "@/components/SearchCompareGrid";
+import { parseEarphoneFilters } from "@/lib/earphone-filters";
 import {
-  applyEarphoneFilters,
-  buildSearchOrFilter,
-  parseEarphoneFilters,
-  uniqueSortedCategories,
-} from "@/lib/earphone-filters";
+  getCategoriesForSearch,
+  searchEarphones,
+} from "@/lib/earphones-data";
 import { createPageMetadata } from "@/lib/site-metadata";
-import { logSupabaseError } from "@/lib/supabase-error";
-import { isSupabaseConfigured, supabase } from "@/lib/supabase";
-import type { Earphone } from "@/types/database";
 
 type PageProps = {
   searchParams: Promise<{
@@ -43,49 +37,6 @@ function getQuery(q: string | string[] | undefined): string {
   return q?.trim() ?? "";
 }
 
-async function searchEarphones(
-  keyword: string,
-  filters: ReturnType<typeof parseEarphoneFilters>,
-): Promise<Earphone[]> {
-  if (!supabase) {
-    return [];
-  }
-
-  let query = supabase
-    .from("earphones")
-    .select("*")
-    .or(buildSearchOrFilter(keyword));
-
-  query = applyEarphoneFilters(query, filters);
-
-  const { data, error } = await query;
-
-  if (error) {
-    logSupabaseError("Failed to search earphones:", error);
-    return [];
-  }
-
-  return data ?? [];
-}
-
-async function getSearchCategories(keyword: string): Promise<string[]> {
-  if (!supabase) {
-    return [];
-  }
-
-  const { data, error } = await supabase
-    .from("earphones")
-    .select("category")
-    .or(buildSearchOrFilter(keyword));
-
-  if (error) {
-    logSupabaseError("Failed to fetch search categories:", error);
-    return [];
-  }
-
-  return uniqueSortedCategories(data);
-}
-
 export default async function SearchPage({ searchParams }: PageProps) {
   const params = await searchParams;
   const keyword = getQuery(params.q);
@@ -109,10 +60,8 @@ export default async function SearchPage({ searchParams }: PageProps) {
     );
   }
 
-  const [earphones, categories] = await Promise.all([
-    searchEarphones(keyword, filters),
-    getSearchCategories(keyword),
-  ]);
+  const earphones = searchEarphones(keyword, filters);
+  const categories = getCategoriesForSearch(keyword);
 
   return (
     <div className="flex flex-1 flex-col px-6 py-10">
@@ -123,10 +72,7 @@ export default async function SearchPage({ searchParams }: PageProps) {
         <h1 className="mb-2 text-2xl font-semibold tracking-tight text-gray-900 sm:text-3xl">
           「{keyword}」の検索結果
         </h1>
-        <p className="mb-4 text-sm text-gray-600">
-          {earphones.length} 件
-          {!isSupabaseConfigured ? "（Supabase 未設定）" : null}
-        </p>
+        <p className="mb-4 text-sm text-gray-600">{earphones.length} 件</p>
         <PriceDisclaimer className="mb-8" />
 
         <FilterPanel categories={categories}>

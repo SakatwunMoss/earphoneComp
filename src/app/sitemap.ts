@@ -1,32 +1,8 @@
 import type { MetadataRoute } from "next";
 
 import { brandPagePath, earphonePagePath } from "@/lib/brand-url";
+import { getAllEarphones } from "@/lib/earphones-data";
 import { SITE_URL } from "@/lib/site-metadata";
-import { logSupabaseError } from "@/lib/supabase-error";
-import { supabase } from "@/lib/supabase";
-
-type EarphoneSitemapRow = {
-  id: string;
-  brand: string;
-  updated_at: string;
-};
-
-async function getEarphonesForSitemap(): Promise<EarphoneSitemapRow[]> {
-  if (!supabase) {
-    return [];
-  }
-
-  const { data, error } = await supabase
-    .from("earphones")
-    .select("id, brand, updated_at");
-
-  if (error) {
-    logSupabaseError("Failed to fetch earphones for sitemap:", error);
-    return [];
-  }
-
-  return (data ?? []) as EarphoneSitemapRow[];
-}
 
 function latestDate(dates: string[]): Date | undefined {
   if (dates.length === 0) {
@@ -35,9 +11,9 @@ function latestDate(dates: string[]): Date | undefined {
   return new Date(dates.reduce((a, b) => (a > b ? a : b)));
 }
 
-export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+export default function sitemap(): MetadataRoute.Sitemap {
   const base = SITE_URL.origin;
-  const earphones = await getEarphonesForSitemap();
+  const earphones = getAllEarphones();
 
   const brandUpdatedAt = new Map<string, string[]>();
   for (const row of earphones) {
