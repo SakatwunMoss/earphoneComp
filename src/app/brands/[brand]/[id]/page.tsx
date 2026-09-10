@@ -261,6 +261,23 @@ export default async function EarphoneDetailPage({ params }: PageProps) {
           ) : null}
         </section>
 
+        {earphone.long_description?.trim() ? (
+          <section
+            aria-labelledby="long-description-heading"
+            className="mt-10"
+          >
+            <h2
+              id="long-description-heading"
+              className="mb-3 text-xl font-medium text-gray-900"
+            >
+              この機種について
+            </h2>
+            <div className="max-w-2xl space-y-4 text-sm leading-relaxed text-gray-700 whitespace-pre-line">
+              {earphone.long_description.trim()}
+            </div>
+          </section>
+        ) : null}
+
         <p className="mt-8">
           <Link
             href={brandPagePath(brand)}

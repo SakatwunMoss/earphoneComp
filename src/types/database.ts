@@ -21,7 +21,10 @@ export type Earphone = {
   noise_cancelling: boolean;
   battery_life: string | null;
   water_resistance: string | null;
+  /** 一覧・短い要約用 */
   description: string | null;
+  /** 商品詳細ページ用の独自長文説明（用途・比較・注意点など） */
+  long_description: string | null;
   created_at: string;
   updated_at: string;
 };
