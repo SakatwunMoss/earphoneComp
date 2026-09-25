@@ -1,6 +1,13 @@
 "use client";
 
-import { useMemo, useState, type Dispatch, type SetStateAction } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 
 import {
   BilingualButtonLabel,
@@ -28,6 +35,9 @@ const STEPS = [
   "water",
 ] as const;
 
+/** Sticky site header offset so scroll targets are not hidden underneath. */
+const QUIZ_SCROLL_MARGIN_CLASS = "scroll-mt-20";
+
 type StepId = (typeof STEPS)[number];
 
 type DiagnoseQuizProps = {
@@ -54,10 +64,23 @@ const INITIAL_DRAFT: DraftAnswers = {
 
 const { quiz: quizCopy, results: resultsCopy } = diagnoseCopy;
 
+function prefersReducedMotion(): boolean {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+function scrollBehavior(): ScrollBehavior {
+  return prefersReducedMotion() ? "auto" : "smooth";
+}
+
 export function DiagnoseQuiz({ earphones }: DiagnoseQuizProps) {
   const [stepIndex, setStepIndex] = useState(0);
   const [draft, setDraft] = useState<DraftAnswers>(INITIAL_DRAFT);
   const [finished, setFinished] = useState(false);
+  const questionTopRef = useRef<HTMLDivElement>(null);
+  const resultsTopRef = useRef<HTMLDivElement>(null);
+  const prevNavRef = useRef<{ stepIndex: number; finished: boolean } | null>(
+    null,
+  );
 
   const step = STEPS[stepIndex];
   const progress = finished
@@ -74,6 +97,25 @@ export function DiagnoseQuiz({ earphones }: DiagnoseQuizProps) {
     }
     return recommendEarphones(earphones, answers, 5);
   }, [draft, earphones, finished]);
+
+  useEffect(() => {
+    const prev = prevNavRef.current;
+    prevNavRef.current = { stepIndex, finished };
+    // Skip initial mount (and React Strict Mode double-invoke with same values).
+    if (
+      prev === null ||
+      (prev.stepIndex === stepIndex && prev.finished === finished)
+    ) {
+      return;
+    }
+
+    const behavior = scrollBehavior();
+    const target = finished
+      ? resultsTopRef.current
+      : questionTopRef.current;
+
+    target?.scrollIntoView({ behavior, block: "start" });
+  }, [stepIndex, finished]);
 
   function restart() {
     setDraft(INITIAL_DRAFT);
@@ -102,7 +144,7 @@ export function DiagnoseQuiz({ earphones }: DiagnoseQuizProps) {
 
   if (finished && result) {
     return (
-      <div>
+      <div ref={resultsTopRef} className={QUIZ_SCROLL_MARGIN_CLASS}>
         <header className="mb-8">
           <BilingualText
             as="h1"
@@ -143,7 +185,10 @@ export function DiagnoseQuiz({ earphones }: DiagnoseQuizProps) {
         />
       </header>
 
-      <div className="mb-6">
+      <div
+        ref={questionTopRef}
+        className={`mb-6 ${QUIZ_SCROLL_MARGIN_CLASS}`}
+      >
         <div className="mb-2 flex items-center justify-between gap-3 text-gray-500">
           <BilingualText
             copy={quizCopy.questionProgress(stepIndex + 1, STEPS.length)}
