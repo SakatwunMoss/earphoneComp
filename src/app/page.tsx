@@ -20,14 +20,14 @@ export default function Home() {
 
   return (
     <div className="flex flex-1 flex-col">
-      <div className="w-full">
+      <div className="w-full overflow-hidden">
         <Image
           src="/images/hero.jpg"
           alt="Earphone Compare — メーカーからイヤホンを探そう"
           width={1584}
           height={672}
           priority
-          className="h-auto w-full"
+          className="h-auto max-h-[min(52vh,420px)] w-full object-cover object-center sm:max-h-[min(48vh,480px)]"
         />
       </div>
 
@@ -35,7 +35,7 @@ export default function Home() {
         aria-labelledby="hero-heading"
         className="w-full border-b border-teal-100 bg-teal-50"
       >
-        <div className="mx-auto flex w-full max-w-6xl flex-col items-start gap-3 px-6 py-12 sm:py-16">
+        <div className="mx-auto flex w-full max-w-6xl flex-col items-start gap-4 px-6 py-12 sm:py-16">
           <p className="text-sm font-medium tracking-wide text-teal-700">
             Earphone Compare
           </p>
@@ -46,22 +46,60 @@ export default function Home() {
             メーカーからイヤホンを探そう
           </h1>
           <p className="max-w-xl text-sm leading-relaxed text-gray-600 sm:text-base">
-            ブランドごとに登録機種を一覧できます。気になるメーカーを選んで比較してください。
-            まだ機種が決まっていない場合は
+            ブランド一覧から探すか、好み診断で相性のよい機種を見つけられます。
+          </p>
+          <div className="flex w-full flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
             <Link
               href="/diagnose"
-              className="font-medium text-teal-700 underline-offset-2 hover:underline"
+              className="inline-flex w-full items-center justify-center rounded-xl bg-teal-600 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-teal-700 sm:w-auto"
             >
-              好み診断
+              好み診断を始める
             </Link>
-            もどうぞ。
-          </p>
+            <a
+              href="#brands"
+              className="inline-flex w-full items-center justify-center rounded-xl border border-teal-200 bg-white/80 px-6 py-3 text-sm font-medium text-teal-800 transition-colors hover:border-teal-300 hover:bg-white sm:w-auto"
+            >
+              メーカーから探す
+            </a>
+          </div>
+        </div>
+      </section>
+
+      <section
+        aria-labelledby="diagnose-promo-heading"
+        className="w-full border-b border-teal-100 bg-white"
+      >
+        <div className="mx-auto max-w-6xl px-6 py-10 sm:py-12">
+          <div className="rounded-xl border border-teal-200 bg-teal-50 px-5 py-8 sm:px-8 sm:py-10">
+            <p className="text-xs font-medium tracking-wide text-teal-700">
+              好み診断
+            </p>
+            <h2
+              id="diagnose-promo-heading"
+              className="mt-2 text-2xl font-semibold tracking-tight text-gray-900 sm:text-3xl"
+            >
+              1分で、あなたに合うイヤホンが見つかる
+            </h2>
+            <p className="mt-3 max-w-2xl text-sm leading-relaxed text-gray-600 sm:text-base">
+              使用シーンや予算など、いくつかの質問に答えるだけでおすすめを提案します。結果からそのまま比較もできます。
+            </p>
+            <Link
+              href="/diagnose"
+              className="mt-6 inline-flex w-full items-center justify-center rounded-xl bg-teal-600 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-teal-700 sm:w-auto"
+            >
+              診断をはじめる
+            </Link>
+          </div>
         </div>
       </section>
 
       <div className="px-6 py-10">
-        <main className="mx-auto w-full max-w-6xl">
+        <main id="brands" className="mx-auto w-full max-w-6xl scroll-mt-24">
           <Breadcrumbs items={[{ label: "ホーム", href: "/" }]} />
+
+          <h2 className="mb-6 text-xl font-semibold tracking-tight text-gray-900 sm:text-2xl">
+            メーカーから探す
+          </h2>
 
           {brands.length > 0 ? (
             <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -72,9 +110,9 @@ export default function Home() {
                     className="flex h-full w-full flex-col"
                   >
                     <BrandLogo brand={brand} />
-                    <h2 className="mb-2 text-lg font-medium tracking-tight text-gray-900">
+                    <h3 className="mb-2 text-lg font-medium tracking-tight text-gray-900">
                       {brand}
-                    </h2>
+                    </h3>
                     <p className="text-sm text-gray-600">
                       <span className="font-medium text-teal-700">{count}</span>
                       <span className="text-gray-500"> 機種</span>
