@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Image from "next/image";
+import Link from "next/link";
 
 import { BrandLogo } from "@/components/BrandLogo";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
@@ -46,6 +47,14 @@ export default function Home() {
           </h1>
           <p className="max-w-xl text-sm leading-relaxed text-gray-600 sm:text-base">
             ブランドごとに登録機種を一覧できます。気になるメーカーを選んで比較してください。
+            まだ機種が決まっていない場合は
+            <Link
+              href="/diagnose"
+              className="font-medium text-teal-700 underline-offset-2 hover:underline"
+            >
+              好み診断
+            </Link>
+            もどうぞ。
           </p>
         </div>
       </section>

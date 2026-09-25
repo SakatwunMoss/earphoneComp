@@ -32,6 +32,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: "daily",
       priority: 1,
     },
+    {
+      url: `${base}/diagnose`,
+      lastModified: homeLastMod,
+      changeFrequency: "weekly",
+      priority: 0.9,
+    },
   ];
 
   for (const [brand, dates] of [...brandUpdatedAt.entries()].sort(([a], [b]) =>
