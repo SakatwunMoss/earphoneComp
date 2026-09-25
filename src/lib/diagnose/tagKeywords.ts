@@ -102,16 +102,18 @@ export const PRIORITY_KEYWORDS: Record<PriorityId, readonly string[]> = {
   ],
 };
 
+import { diagnoseCopy } from "@/lib/diagnose/copy";
+
 export const SCENE_LABELS: Record<SceneId, string> = {
-  commute: "通勤・通学",
-  sport: "スポーツ・運動",
-  wfh: "在宅・デスクワーク",
-  game: "ゲーム",
+  commute: diagnoseCopy.quiz.options.scene.commute.ja,
+  sport: diagnoseCopy.quiz.options.scene.sport.ja,
+  wfh: diagnoseCopy.quiz.options.scene.wfh.ja,
+  game: diagnoseCopy.quiz.options.scene.game.ja,
 };
 
 export const PRIORITY_LABELS: Record<PriorityId, string> = {
-  sound: "音質",
-  battery: "バッテリー持ち",
-  fit: "装着感",
-  call: "通話品質",
+  sound: diagnoseCopy.quiz.options.priorities.sound.ja,
+  battery: diagnoseCopy.quiz.options.priorities.battery.ja,
+  fit: diagnoseCopy.quiz.options.priorities.fit.ja,
+  call: diagnoseCopy.quiz.options.priorities.call.ja,
 };

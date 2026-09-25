@@ -4,29 +4,62 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Suspense, useState } from "react";
 
+import { BilingualText } from "@/components/BilingualText";
 import { SearchBox } from "@/components/SearchBox";
+import { diagnoseCopy, type BilingualCopy } from "@/lib/diagnose/copy";
 
 function SearchBoxFallback() {
   return (
     <div
       className="h-9 w-full max-w-md animate-pulse rounded-xl border border-gray-200 bg-white"
       aria-hidden="true"
-    />
+      />
   );
 }
 
-const NAV_LINKS = [
+type NavLink = {
+  href: string;
+  label: string | BilingualCopy;
+};
+
+const NAV_LINKS: NavLink[] = [
   { href: "/", label: "ホーム" },
-  { href: "/diagnose", label: "好み診断" },
+  { href: "/diagnose", label: diagnoseCopy.nav.label },
   { href: "/columns", label: "コラム" },
   { href: "/about", label: "サイトについて" },
-] as const;
+];
 
 function isActivePath(pathname: string, href: string) {
   if (href === "/") {
     return pathname === "/";
   }
   return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+function isBilingual(label: string | BilingualCopy): label is BilingualCopy {
+  return typeof label === "object" && "en" in label && "ja" in label;
+}
+
+function NavLabel({
+  label,
+  active,
+}: {
+  label: string | BilingualCopy;
+  active: boolean;
+}) {
+  if (isBilingual(label)) {
+    return (
+      <BilingualText
+        copy={label}
+        size="xs"
+        enClassName={
+          active ? "font-medium text-teal-700" : "font-medium text-gray-700"
+        }
+        jaClassName={active ? "!text-teal-700/75" : "!text-gray-500"}
+      />
+    );
+  }
+  return <span>{label}</span>;
 }
 
 export function Header() {
@@ -58,14 +91,18 @@ export function Header() {
               <Link
                 key={href}
                 href={href}
-                className={`text-sm transition-colors ${
-                  active
-                    ? "font-medium text-teal-700"
-                    : "text-gray-700 hover:text-teal-700"
+                className={`transition-colors ${
+                  isBilingual(label)
+                    ? ""
+                    : `text-sm ${
+                        active
+                          ? "font-medium text-teal-700"
+                          : "text-gray-700 hover:text-teal-700"
+                      }`
                 }`}
                 aria-current={active ? "page" : undefined}
               >
-                {label}
+                <NavLabel label={label} active={active} />
               </Link>
             );
           })}
@@ -133,14 +170,22 @@ export function Header() {
                   <Link
                     href={href}
                     onClick={closeMenu}
-                    className={`block rounded-xl px-3 py-2.5 text-sm transition-colors ${
+                    className={`block rounded-xl px-3 py-2.5 transition-colors ${
                       active
-                        ? "bg-teal-100/70 font-medium text-teal-700"
-                        : "text-gray-700 hover:bg-teal-100/60 hover:text-teal-700"
+                        ? "bg-teal-100/70"
+                        : "hover:bg-teal-100/60"
+                    } ${
+                      isBilingual(label)
+                        ? ""
+                        : `text-sm ${
+                            active
+                              ? "font-medium text-teal-700"
+                              : "text-gray-700 hover:text-teal-700"
+                          }`
                     }`}
                     aria-current={active ? "page" : undefined}
                   >
-                    {label}
+                    <NavLabel label={label} active={active} />
                   </Link>
                 </li>
               );

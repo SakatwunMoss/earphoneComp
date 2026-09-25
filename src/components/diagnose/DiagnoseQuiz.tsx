@@ -2,13 +2,12 @@
 
 import { useMemo, useState, type Dispatch, type SetStateAction } from "react";
 
-import { DiagnoseResults } from "@/components/diagnose/DiagnoseResults";
 import {
-  PRIORITY_LABELS,
-  SCENE_LABELS,
-  type PriorityId,
-  type SceneId,
-} from "@/lib/diagnose/tagKeywords";
+  BilingualButtonLabel,
+  BilingualText,
+} from "@/components/BilingualText";
+import { DiagnoseResults } from "@/components/diagnose/DiagnoseResults";
+import { diagnoseCopy, type BilingualCopy } from "@/lib/diagnose/copy";
 import {
   recommendEarphones,
   type BudgetPreference,
@@ -17,6 +16,7 @@ import {
   type QuizAnswers,
   type WaterPreference,
 } from "@/lib/diagnose/scoreEarphones";
+import type { PriorityId, SceneId } from "@/lib/diagnose/tagKeywords";
 import type { Earphone } from "@/types/database";
 
 const STEPS = [
@@ -51,6 +51,8 @@ const INITIAL_DRAFT: DraftAnswers = {
   priorities: [],
   water: null,
 };
+
+const { quiz: quizCopy, results: resultsCopy } = diagnoseCopy;
 
 export function DiagnoseQuiz({ earphones }: DiagnoseQuizProps) {
   const [stepIndex, setStepIndex] = useState(0);
@@ -102,12 +104,20 @@ export function DiagnoseQuiz({ earphones }: DiagnoseQuizProps) {
     return (
       <div>
         <header className="mb-8">
-          <h1 className="text-3xl font-semibold tracking-tight text-gray-900 sm:text-4xl">
-            診断結果
-          </h1>
-          <p className="mt-2 text-sm text-gray-600">
-            回答をもとにスコアリングしたおすすめ機種です。
-          </p>
+          <BilingualText
+            as="h1"
+            copy={resultsCopy.title}
+            size="3xl"
+            enClassName="text-gray-900"
+            jaClassName="!text-gray-600"
+          />
+          <BilingualText
+            as="p"
+            copy={resultsCopy.intro}
+            size="sm"
+            className="mt-3 max-w-xl"
+            enClassName="text-gray-600"
+          />
         </header>
         <DiagnoseResults result={result} onRestart={restart} />
       </div>
@@ -117,20 +127,30 @@ export function DiagnoseQuiz({ earphones }: DiagnoseQuizProps) {
   return (
     <div>
       <header className="mb-8">
-        <h1 className="text-3xl font-semibold tracking-tight text-gray-900 sm:text-4xl">
-          好み診断
-        </h1>
-        <p className="mt-2 max-w-xl text-sm leading-relaxed text-gray-600">
-          いくつかの質問に答えると、登録機種から相性のよいイヤホンを提案します。
-        </p>
+        <BilingualText
+          as="h1"
+          copy={quizCopy.title}
+          size="3xl"
+          enClassName="text-gray-900"
+          jaClassName="!text-gray-600"
+        />
+        <BilingualText
+          as="p"
+          copy={quizCopy.intro}
+          size="sm"
+          className="mt-3 max-w-xl"
+          enClassName="text-gray-600"
+        />
       </header>
 
       <div className="mb-6">
-        <div className="mb-2 flex items-center justify-between text-xs text-gray-500">
-          <span>
-            質問 {stepIndex + 1} / {STEPS.length}
-          </span>
-          <span>{progress}%</span>
+        <div className="mb-2 flex items-center justify-between gap-3 text-gray-500">
+          <BilingualText
+            copy={quizCopy.questionProgress(stepIndex + 1, STEPS.length)}
+            size="xs"
+            enClassName="text-gray-500"
+          />
+          <span className="shrink-0 text-xs">{progress}%</span>
         </div>
         <div
           className="h-1.5 overflow-hidden rounded-full bg-teal-100"
@@ -154,17 +174,24 @@ export function DiagnoseQuiz({ earphones }: DiagnoseQuizProps) {
             type="button"
             onClick={goBack}
             disabled={stepIndex === 0}
-            className="inline-flex items-center justify-center rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:border-gray-300 disabled:cursor-not-allowed disabled:opacity-40"
+            className="inline-flex min-h-[3rem] items-center justify-center rounded-xl border border-gray-200 bg-white px-4 py-2 text-gray-700 transition-colors hover:border-gray-300 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            戻る
+            <BilingualButtonLabel copy={quizCopy.back} />
           </button>
           <button
             type="button"
             onClick={goNext}
             disabled={!canProceed}
-            className="inline-flex items-center justify-center rounded-xl bg-teal-600 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-40"
+            className="inline-flex min-h-[3rem] items-center justify-center rounded-xl bg-teal-600 px-5 py-2 text-white transition-colors hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {stepIndex >= STEPS.length - 1 ? "結果を見る" : "次へ"}
+            <BilingualButtonLabel
+              inverted
+              copy={
+                stepIndex >= STEPS.length - 1
+                  ? quizCopy.seeResults
+                  : quizCopy.next
+              }
+            />
           </button>
         </div>
       </div>
@@ -218,13 +245,15 @@ function StepContent({
   draft: DraftAnswers;
   setDraft: Dispatch<SetStateAction<DraftAnswers>>;
 }) {
+  const { questions, options } = quizCopy;
+
   switch (step) {
     case "scene":
       return (
         <ChoiceStep
-          title="主な使用シーンは？"
+          title={questions.scene}
           options={(
-            Object.entries(SCENE_LABELS) as [SceneId, string][]
+            Object.entries(options.scene) as [SceneId, BilingualCopy][]
           ).map(([id, label]) => ({ id, label }))}
           value={draft.scene}
           onChange={(scene) => setDraft((d) => ({ ...d, scene }))}
@@ -233,12 +262,10 @@ function StepContent({
     case "nc":
       return (
         <ChoiceStep
-          title="ノイズキャンセリングは必要ですか？"
-          options={[
-            { id: "required" as const, label: "必須" },
-            { id: "preferred" as const, label: "あった方がいい" },
-            { id: "none" as const, label: "不要" },
-          ]}
+          title={questions.nc}
+          options={(
+            Object.entries(options.nc) as [NcPreference, BilingualCopy][]
+          ).map(([id, label]) => ({ id, label }))}
           value={draft.nc}
           onChange={(nc) => setDraft((d) => ({ ...d, nc }))}
         />
@@ -246,11 +273,10 @@ function StepContent({
     case "form":
       return (
         <ChoiceStep
-          title="装着スタイルの希望は？"
-          options={[
-            { id: "tws" as const, label: "完全ワイヤレス希望" },
-            { id: "any" as const, label: "どちらでも" },
-          ]}
+          title={questions.form}
+          options={(
+            Object.entries(options.form) as [FormPreference, BilingualCopy][]
+          ).map(([id, label]) => ({ id, label }))}
           value={draft.form}
           onChange={(form) => setDraft((d) => ({ ...d, form }))}
         />
@@ -258,12 +284,13 @@ function StepContent({
     case "budget":
       return (
         <ChoiceStep
-          title="予算の上限は？"
-          options={[
-            { id: "under_10000" as const, label: "〜1万円" },
-            { id: "under_30000" as const, label: "〜3万円" },
-            { id: "no_limit" as const, label: "3万円以上（上限なし）" },
-          ]}
+          title={questions.budget}
+          options={(
+            Object.entries(options.budget) as [
+              BudgetPreference,
+              BilingualCopy,
+            ][]
+          ).map(([id, label]) => ({ id, label }))}
           value={draft.budget}
           onChange={(budget) => setDraft((d) => ({ ...d, budget }))}
         />
@@ -271,9 +298,9 @@ function StepContent({
     case "priorities":
       return (
         <MultiChoiceStep
-          title="特に重視するポイントは？（複数可）"
+          title={questions.priorities}
           options={(
-            Object.entries(PRIORITY_LABELS) as [PriorityId, string][]
+            Object.entries(options.priorities) as [PriorityId, BilingualCopy][]
           ).map(([id, label]) => ({ id, label }))}
           values={draft.priorities}
           onChange={(priorities) => setDraft((d) => ({ ...d, priorities }))}
@@ -282,11 +309,10 @@ function StepContent({
     case "water":
       return (
         <ChoiceStep
-          title="汗・水濡れ対策は必要ですか？"
-          options={[
-            { id: "needed" as const, label: "必要" },
-            { id: "not_needed" as const, label: "不要" },
-          ]}
+          title={questions.water}
+          options={(
+            Object.entries(options.water) as [WaterPreference, BilingualCopy][]
+          ).map(([id, label]) => ({ id, label }))}
           value={draft.water}
           onChange={(water) => setDraft((d) => ({ ...d, water }))}
         />
@@ -300,16 +326,20 @@ function ChoiceStep<T extends string>({
   value,
   onChange,
 }: {
-  title: string;
-  options: { id: T; label: string }[];
+  title: BilingualCopy;
+  options: { id: T; label: BilingualCopy }[];
   value: T | null;
   onChange: (id: T) => void;
 }) {
   return (
     <fieldset>
-      <legend className="text-lg font-medium tracking-tight text-gray-900">
-        {title}
-      </legend>
+      <BilingualText
+        as="legend"
+        copy={title}
+        size="lg"
+        enClassName="font-medium text-gray-900"
+        jaClassName="!text-gray-600"
+      />
       <div className="mt-4 flex flex-col gap-2">
         {options.map((option) => {
           const selected = value === option.id;
@@ -318,14 +348,23 @@ function ChoiceStep<T extends string>({
               key={option.id}
               type="button"
               onClick={() => onChange(option.id)}
-              className={`rounded-xl border px-4 py-3 text-left text-sm transition-colors ${
+              className={`rounded-xl border px-4 py-3 text-left transition-colors ${
                 selected
-                  ? "border-teal-500 bg-white font-medium text-teal-900 ring-1 ring-teal-500"
-                  : "border-teal-100/80 bg-white/80 text-gray-700 hover:border-teal-300"
+                  ? "border-teal-500 bg-white ring-1 ring-teal-500"
+                  : "border-teal-100/80 bg-white/80 hover:border-teal-300"
               }`}
               aria-pressed={selected}
             >
-              {option.label}
+              <BilingualText
+                copy={option.label}
+                size="sm"
+                enClassName={
+                  selected
+                    ? "font-medium text-teal-900"
+                    : "font-medium text-gray-800"
+                }
+                jaClassName={selected ? "!text-teal-700/80" : ""}
+              />
             </button>
           );
         })}
@@ -340,8 +379,8 @@ function MultiChoiceStep<T extends string>({
   values,
   onChange,
 }: {
-  title: string;
-  options: { id: T; label: string }[];
+  title: BilingualCopy;
+  options: { id: T; label: BilingualCopy }[];
   values: T[];
   onChange: (ids: T[]) => void;
 }) {
@@ -355,9 +394,13 @@ function MultiChoiceStep<T extends string>({
 
   return (
     <fieldset>
-      <legend className="text-lg font-medium tracking-tight text-gray-900">
-        {title}
-      </legend>
+      <BilingualText
+        as="legend"
+        copy={title}
+        size="lg"
+        enClassName="font-medium text-gray-900"
+        jaClassName="!text-gray-600"
+      />
       <div className="mt-4 flex flex-col gap-2">
         {options.map((option) => {
           const selected = values.includes(option.id);
@@ -366,14 +409,23 @@ function MultiChoiceStep<T extends string>({
               key={option.id}
               type="button"
               onClick={() => toggle(option.id)}
-              className={`rounded-xl border px-4 py-3 text-left text-sm transition-colors ${
+              className={`rounded-xl border px-4 py-3 text-left transition-colors ${
                 selected
-                  ? "border-teal-500 bg-white font-medium text-teal-900 ring-1 ring-teal-500"
-                  : "border-teal-100/80 bg-white/80 text-gray-700 hover:border-teal-300"
+                  ? "border-teal-500 bg-white ring-1 ring-teal-500"
+                  : "border-teal-100/80 bg-white/80 hover:border-teal-300"
               }`}
               aria-pressed={selected}
             >
-              {option.label}
+              <BilingualText
+                copy={option.label}
+                size="sm"
+                enClassName={
+                  selected
+                    ? "font-medium text-teal-900"
+                    : "font-medium text-gray-800"
+                }
+                jaClassName={selected ? "!text-teal-700/80" : ""}
+              />
             </button>
           );
         })}

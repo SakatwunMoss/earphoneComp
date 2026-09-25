@@ -2,10 +2,15 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 
+import {
+  BilingualButtonLabel,
+  BilingualText,
+} from "@/components/BilingualText";
 import { BrandLogo } from "@/components/BrandLogo";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { Card } from "@/components/Card";
 import { brandPagePath } from "@/lib/brand-url";
+import { diagnoseCopy } from "@/lib/diagnose/copy";
 import { getBrandSummaries } from "@/lib/earphones-data";
 import { SITE_URL } from "@/lib/site-metadata";
 
@@ -15,6 +20,8 @@ export const metadata: Metadata = {
   },
 };
 
+const { home: homeCopy } = diagnoseCopy;
+
 export default function Home() {
   const brands = getBrandSummaries();
 
@@ -23,7 +30,7 @@ export default function Home() {
       <div className="w-full overflow-hidden">
         <Image
           src="/images/hero.jpg"
-          alt="Earphone Compare — メーカーからイヤホンを探そう"
+          alt="Earphone Compare — Find earphones by brand"
           width={1584}
           height={672}
           priority
@@ -43,23 +50,31 @@ export default function Home() {
             id="hero-heading"
             className="text-3xl font-semibold tracking-tight text-gray-900 sm:text-4xl"
           >
-            メーカーからイヤホンを探そう
+            <span className="block">Find earphones by brand</span>
+            <span className="mt-1 block text-base font-medium text-gray-600 sm:text-lg">
+              メーカーからイヤホンを探そう
+            </span>
           </h1>
-          <p className="max-w-xl text-sm leading-relaxed text-gray-600 sm:text-base">
-            ブランド一覧から探すか、好み診断で相性のよい機種を見つけられます。
-          </p>
-          <div className="flex w-full flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+          <BilingualText
+            as="p"
+            copy={homeCopy.heroSupport}
+            size="sm"
+            className="max-w-xl"
+            enClassName="text-gray-600 sm:text-base"
+            jaClassName="!text-gray-500"
+          />
+          <div className="flex w-full flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-stretch">
             <Link
               href="/diagnose"
-              className="inline-flex w-full items-center justify-center rounded-xl bg-teal-600 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-teal-700 sm:w-auto"
+              className="inline-flex min-h-[3.25rem] w-full items-center justify-center rounded-xl bg-teal-600 px-6 py-2.5 text-white transition-colors hover:bg-teal-700 sm:w-auto"
             >
-              好み診断を始める
+              <BilingualButtonLabel inverted copy={homeCopy.startQuiz} />
             </Link>
             <a
               href="#brands"
-              className="inline-flex w-full items-center justify-center rounded-xl border border-teal-200 bg-white/80 px-6 py-3 text-sm font-medium text-teal-800 transition-colors hover:border-teal-300 hover:bg-white sm:w-auto"
+              className="inline-flex min-h-[3.25rem] w-full items-center justify-center rounded-xl border border-teal-200 bg-white/80 px-6 py-2.5 text-teal-800 transition-colors hover:border-teal-300 hover:bg-white sm:w-auto"
             >
-              メーカーから探す
+              <BilingualButtonLabel copy={homeCopy.browseBrands} />
             </a>
           </div>
         </div>
@@ -71,23 +86,34 @@ export default function Home() {
       >
         <div className="mx-auto max-w-6xl px-6 py-10 sm:py-12">
           <div className="rounded-xl border border-teal-200 bg-teal-50 px-5 py-8 sm:px-8 sm:py-10">
-            <p className="text-xs font-medium tracking-wide text-teal-700">
-              好み診断
-            </p>
-            <h2
+            <BilingualText
+              copy={homeCopy.promoEyebrow}
+              size="xs"
+              enClassName="font-medium tracking-wide text-teal-700"
+              jaClassName="!text-teal-700/75"
+            />
+            <BilingualText
+              as="h2"
               id="diagnose-promo-heading"
-              className="mt-2 text-2xl font-semibold tracking-tight text-gray-900 sm:text-3xl"
-            >
-              1分で、あなたに合うイヤホンが見つかる
-            </h2>
-            <p className="mt-3 max-w-2xl text-sm leading-relaxed text-gray-600 sm:text-base">
-              使用シーンや予算など、いくつかの質問に答えるだけでおすすめを提案します。結果からそのまま比較もできます。
-            </p>
+              copy={homeCopy.promoTitle}
+              size="2xl"
+              className="mt-2"
+              enClassName="text-gray-900"
+              jaClassName="!text-gray-600"
+            />
+            <BilingualText
+              as="p"
+              copy={homeCopy.promoBody}
+              size="sm"
+              className="mt-3 max-w-2xl"
+              enClassName="text-gray-600 sm:text-base"
+              jaClassName="!text-gray-500"
+            />
             <Link
               href="/diagnose"
-              className="mt-6 inline-flex w-full items-center justify-center rounded-xl bg-teal-600 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-teal-700 sm:w-auto"
+              className="mt-6 inline-flex min-h-[3.25rem] w-full items-center justify-center rounded-xl bg-teal-600 px-6 py-2.5 text-white transition-colors hover:bg-teal-700 sm:w-auto"
             >
-              診断をはじめる
+              <BilingualButtonLabel inverted copy={homeCopy.promoCta} />
             </Link>
           </div>
         </div>
@@ -97,9 +123,14 @@ export default function Home() {
         <main id="brands" className="mx-auto w-full max-w-6xl scroll-mt-24">
           <Breadcrumbs items={[{ label: "ホーム", href: "/" }]} />
 
-          <h2 className="mb-6 text-xl font-semibold tracking-tight text-gray-900 sm:text-2xl">
-            メーカーから探す
-          </h2>
+          <BilingualText
+            as="h2"
+            copy={homeCopy.brandsHeading}
+            size="xl"
+            className="mb-6"
+            enClassName="text-gray-900"
+            jaClassName="!text-gray-600"
+          />
 
           {brands.length > 0 ? (
             <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -115,7 +146,7 @@ export default function Home() {
                     </h3>
                     <p className="text-sm text-gray-600">
                       <span className="font-medium text-teal-700">{count}</span>
-                      <span className="text-gray-500"> 機種</span>
+                      <span className="text-gray-500"> models / 機種</span>
                     </p>
                   </Card>
                 </li>
@@ -123,7 +154,7 @@ export default function Home() {
             </ul>
           ) : (
             <p className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-8 text-center text-gray-600">
-              データがありません
+              No data / データがありません
             </p>
           )}
         </main>

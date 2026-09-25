@@ -2,13 +2,15 @@ import type { Metadata } from "next";
 
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { DiagnoseQuiz } from "@/components/diagnose/DiagnoseQuiz";
+import { diagnoseCopy } from "@/lib/diagnose/copy";
 import { getAllEarphones } from "@/lib/earphones-data";
 import { createPageMetadata } from "@/lib/site-metadata";
 
+const { meta } = diagnoseCopy;
+
 export const metadata: Metadata = createPageMetadata({
-  title: "好み診断",
-  description:
-    "使用シーンや予算などの質問に答えて、相性のよいイヤホンを提案します。結果からそのまま比較もできます。",
+  title: `${meta.title.en} / ${meta.title.ja}`,
+  description: `${meta.description.en} ${meta.description.ja}`,
   path: "/diagnose",
 });
 
@@ -21,7 +23,10 @@ export default function DiagnosePage() {
         <Breadcrumbs
           items={[
             { label: "ホーム", href: "/" },
-            { label: "好み診断", href: "/diagnose" },
+            {
+              label: `${meta.breadcrumb.en} / ${meta.breadcrumb.ja}`,
+              href: "/diagnose",
+            },
           ]}
         />
         <DiagnoseQuiz earphones={earphones} />

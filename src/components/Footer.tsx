@@ -4,7 +4,7 @@ import { formatCatalogUpdatedAt } from "@/lib/earphones-data";
 
 const FOOTER_LINKS = [
   { href: "/", label: "ホーム" },
-  { href: "/diagnose", label: "好み診断" },
+  { href: "/diagnose", label: "Find Your Match / 好み診断" },
   { href: "/about", label: "について" },
   { href: "/privacy-policy", label: "プライバシーポリシー" },
   { href: "/contact", label: "お問い合わせ" },

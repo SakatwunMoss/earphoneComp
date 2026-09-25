@@ -1,9 +1,12 @@
 import type { Earphone } from "@/types/database";
 import {
+  diagnoseCopy,
+  type BilingualCopy,
+  type RelaxedFilterId,
+} from "@/lib/diagnose/copy";
+import {
   PRIORITY_KEYWORDS,
-  PRIORITY_LABELS,
   SCENE_KEYWORDS,
-  SCENE_LABELS,
   type PriorityId,
   type SceneId,
 } from "@/lib/diagnose/tagKeywords";
@@ -50,7 +53,7 @@ export type ScoredEarphone = {
   earphone: Earphone;
   score: number;
   breakdown: ScoreBreakdown;
-  reasons: string[];
+  reasons: BilingualCopy[];
 };
 
 export type RecommendResult = {
@@ -58,7 +61,7 @@ export type RecommendResult = {
   /** ハード条件を段階緩和した結果かどうか */
   relaxed: boolean;
   /** 緩和で外した条件のラベル（UI表示用） */
-  relaxedFilters: string[];
+  relaxedFilters: BilingualCopy[];
 };
 
 const SCENE_SCORE_MAX = 25;
@@ -257,49 +260,48 @@ export function scoreEarphone(
 export function formatMatchReasons(
   breakdown: ScoreBreakdown,
   answers: QuizAnswers,
-): string[] {
-  const reasons: string[] = [];
+): BilingualCopy[] {
+  const reasons: BilingualCopy[] = [];
+  const { reasons: reasonCopy, quiz } = diagnoseCopy;
 
   if (answers.nc === "required" && breakdown.matchedNc) {
-    reasons.push("ノイズキャンセリング搭載");
+    reasons.push(reasonCopy.hasNc);
   } else if (breakdown.nc > 0) {
     reasons.push(
-      answers.nc === "none"
-        ? "NCなしの希望に一致"
-        : "ノイズキャンセリング搭載",
+      answers.nc === "none" ? reasonCopy.noNcMatch : reasonCopy.hasNc,
     );
   }
 
   if (breakdown.scene > 0) {
-    const label = SCENE_LABELS[answers.scene];
-    const hitHint =
-      breakdown.sceneHits.length > 0
-        ? `（${breakdown.sceneHits.slice(0, 2).join("・")}）`
-        : "";
-    reasons.push(`${label}向けの記述あり${hitHint}`);
+    reasons.push(
+      reasonCopy.sceneMention(
+        quiz.options.scene[answers.scene],
+        breakdown.sceneHits,
+      ),
+    );
   }
 
   if (breakdown.priorityHits.length > 0) {
-    const labels = breakdown.priorityHits
-      .map((id) => PRIORITY_LABELS[id])
-      .join("・");
-    reasons.push(`重視ポイント一致: ${labels}`);
+    const labels = breakdown.priorityHits.map(
+      (id) => quiz.options.priorities[id],
+    );
+    reasons.push(reasonCopy.priorityMatch(labels));
   }
 
   if (answers.water === "needed" && breakdown.matchedWater) {
-    reasons.push("汗・水濡れ対策あり");
+    reasons.push(reasonCopy.waterReady);
   }
 
   if (breakdown.matchedBudget && answers.budget !== "no_limit") {
-    reasons.push("予算内");
+    reasons.push(reasonCopy.inBudget);
   }
 
   if (answers.form === "tws" && breakdown.matchedCategory) {
-    reasons.push("完全ワイヤレス");
+    reasons.push(reasonCopy.tws);
   }
 
   if (reasons.length === 0) {
-    reasons.push("条件に近い候補");
+    reasons.push(reasonCopy.closeMatch);
   }
 
   return reasons;
@@ -307,8 +309,7 @@ export function formatMatchReasons(
 
 type RelaxStep = {
   flags: HardFilterFlags;
-  /** このステップで新たに緩和した条件ラベル（累積ではなく差分） */
-  newlyRelaxed: string[];
+  newlyRelaxed: RelaxedFilterId[];
 };
 
 function buildRelaxationSteps(answers: QuizAnswers): RelaxStep[] {
@@ -332,15 +333,15 @@ function buildRelaxationSteps(answers: QuizAnswers): RelaxStep[] {
 
   if (canRelaxBudget) {
     flags = { ...flags, budget: false };
-    steps.push({ flags, newlyRelaxed: ["予算"] });
+    steps.push({ flags, newlyRelaxed: ["budget"] });
   }
   if (canRelaxNc) {
     flags = { ...flags, ncRequired: false };
-    steps.push({ flags, newlyRelaxed: ["ノイズキャンセリング必須"] });
+    steps.push({ flags, newlyRelaxed: ["ncRequired"] });
   }
   if (canRelaxWater) {
     flags = { ...flags, waterNeeded: false };
-    steps.push({ flags, newlyRelaxed: ["防水"] });
+    steps.push({ flags, newlyRelaxed: ["water"] });
   }
 
   return steps;
@@ -388,7 +389,7 @@ export function recommendEarphones(
   limit = 5,
 ): RecommendResult {
   const steps = buildRelaxationSteps(answers);
-  const accumulatedRelaxed: string[] = [];
+  const accumulatedRelaxed: RelaxedFilterId[] = [];
 
   for (let i = 0; i < steps.length; i++) {
     const step = steps[i];
@@ -401,10 +402,21 @@ export function recommendEarphones(
       return {
         items,
         relaxed: i > 0,
-        relaxedFilters: i > 0 ? [...accumulatedRelaxed] : [],
+        relaxedFilters:
+          i > 0
+            ? accumulatedRelaxed.map(
+                (id) => diagnoseCopy.relaxedFilters[id],
+              )
+            : [],
       };
     }
   }
 
-  return { items: [], relaxed: true, relaxedFilters: accumulatedRelaxed };
+  return {
+    items: [],
+    relaxed: true,
+    relaxedFilters: accumulatedRelaxed.map(
+      (id) => diagnoseCopy.relaxedFilters[id],
+    ),
+  };
 }
