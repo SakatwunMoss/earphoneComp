@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { ReactNode } from "react";
+import type { MouseEvent, ReactNode } from "react";
 
 import { Card } from "@/components/Card";
 import { RemoteImage } from "@/components/RemoteImage";
@@ -18,6 +18,9 @@ type EarphoneGridProps = {
   compare?: CompareConfig;
 };
 
+const cardInteractiveClassName =
+  "group relative overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition-all hover:-translate-y-0.5 hover:border-teal-300 hover:shadow-md";
+
 export function EarphoneGrid({
   earphones,
   showBrand = false,
@@ -32,13 +35,23 @@ export function EarphoneGrid({
         return (
           <li key={earphone.id}>
             {compare ? (
-              <Card className="overflow-hidden p-0">
-                <div className="border-b border-gray-100 bg-gray-50/60 px-4 py-3">
+              <article className={`${cardInteractiveClassName} cursor-pointer`}>
+                <Link
+                  href={detailHref}
+                  className="absolute inset-0 z-0 rounded-xl"
+                  aria-label={`${earphone.name}の詳細を見る`}
+                />
+
+                <div
+                  className="relative z-10 border-b border-gray-100 bg-gray-50/60 px-4 py-3"
+                  onClick={stopCardNavigation}
+                >
                   <label className="flex cursor-pointer items-center gap-2.5 text-sm text-gray-700">
                     <input
                       type="checkbox"
                       checked={isSelected}
                       onChange={() => compare.onToggle(earphone)}
+                      onClick={stopCardNavigation}
                       className="h-4 w-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
                     />
                     <span className="font-medium">
@@ -46,45 +59,46 @@ export function EarphoneGrid({
                     </span>
                   </label>
                 </div>
-                <Link href={detailHref} className="block transition-opacity hover:opacity-95">
+
+                <div className="pointer-events-none relative">
                   <RemoteImage
                     src={earphone.image_url}
                     alt={`${earphone.name} 商品画像`}
-                    className="h-48 w-full object-cover"
+                    className="h-48 w-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
                     width={400}
                     height={192}
                     placeholderClassName="aspect-[5/3] h-48 w-full"
                   />
-                </Link>
-                <div className="p-4">
-                  <h2 className="mb-2 text-lg font-medium tracking-tight text-gray-900">
-                    <Link
-                      href={detailHref}
-                      className="transition-colors hover:text-teal-700"
-                    >
+                  <div className="p-4">
+                    <h2 className="mb-2 text-lg font-medium tracking-tight text-gray-900 transition-colors group-hover:text-teal-800">
                       {earphone.name}
-                    </Link>
-                  </h2>
-                  {renderSpecs(earphone, showBrand)}
-                  {renderDescription(earphone)}
+                    </h2>
+                    {renderSpecs(earphone, showBrand)}
+                    {renderDescription(earphone)}
+                    {renderDetailCue()}
+                  </div>
                 </div>
-              </Card>
+              </article>
             ) : (
-              <Card href={detailHref} className="overflow-hidden p-0">
+              <Card
+                href={detailHref}
+                className="group overflow-hidden p-0 transition-all hover:-translate-y-0.5"
+              >
                 <RemoteImage
                   src={earphone.image_url}
                   alt={`${earphone.name} 商品画像`}
-                  className="h-48 w-full object-cover"
+                  className="h-48 w-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
                   width={400}
                   height={192}
                   placeholderClassName="aspect-[5/3] h-48 w-full"
                 />
                 <div className="p-4">
-                  <h2 className="mb-2 text-lg font-medium tracking-tight text-gray-900">
+                  <h2 className="mb-2 text-lg font-medium tracking-tight text-gray-900 transition-colors group-hover:text-teal-800">
                     {earphone.name}
                   </h2>
                   {renderSpecs(earphone, showBrand)}
                   {renderDescription(earphone)}
+                  {renderDetailCue()}
                 </div>
               </Card>
             )}
@@ -92,6 +106,38 @@ export function EarphoneGrid({
         );
       })}
     </ul>
+  );
+}
+
+/** カード全体リンクへのクリック伝播を止め、比較チェックだけを操作する */
+function stopCardNavigation(event: MouseEvent) {
+  event.stopPropagation();
+}
+
+function renderDetailCue(): ReactNode {
+  return (
+    <span className="mt-4 inline-flex items-center gap-0.5 text-sm font-medium text-teal-700 transition-colors group-hover:text-teal-800">
+      詳細を見る
+      <ChevronRightIcon className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+    </span>
+  );
+}
+
+function ChevronRightIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="m9 18 6-6-6-6" />
+    </svg>
   );
 }
 
