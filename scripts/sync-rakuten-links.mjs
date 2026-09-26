@@ -91,7 +91,53 @@ function normalize(str) {
   return str
     .normalize("NFKC")
     .toLowerCase()
-    .replace(/[\s\-_()（）/／,、]/g, "");
+    .replace(/[\s\-_()（）/／,、。.．]/g, "");
+}
+
+// 「AirPods 5(ワイヤレス充電ケース付き)」→ baseName / variant に分割
+function parseModelName(name) {
+  const m = name.match(/^(.+?)\s*[（(]([^）)]+)[）)]\s*$/);
+  if (!m) return { baseName: name, variant: null };
+  return { baseName: m[1].trim(), variant: m[2].trim() };
+}
+
+// 括弧内の型番違いを商品タイトル照合用の針に展開
+// 例: 「ワイヤレス充電ケース付き」→ 本体 / 「付き」除去後の両方
+function variantNeedles(variant) {
+  const needles = [variant];
+  const stripped = variant.replace(/(付き|搭載|モデル|版)$/u, "");
+  if (stripped && stripped !== variant) needles.push(stripped);
+
+  const norm = normalize(variant);
+  // ANC など略語は製品タイトルで言い換えられることが多い
+  if (norm.includes("anc")) {
+    needles.push(
+      "ANC",
+      "アクティブノイズキャンセリング",
+      "ノイズキャンセリング",
+      "ノイキャン",
+    );
+  }
+  return [...new Set(needles)];
+}
+
+function itemMatchesVariant(itemName, variant) {
+  const normItem = normalize(itemName);
+  return variantNeedles(variant).some((needle) =>
+    normItem.includes(normalize(needle)),
+  );
+}
+
+// 同一ベース機種の括弧付きバリアント一覧（無印との取り違え防止用）
+function buildVariantIndex(earphones) {
+  const index = new Map();
+  for (const earphone of earphones) {
+    const { baseName, variant } = parseModelName(earphone.name);
+    const key = normalize(baseName);
+    if (!index.has(key)) index.set(key, []);
+    if (variant) index.get(key).push(variant);
+  }
+  return index;
 }
 
 // 楽天APIはキーワードを空白区切りにし、各トークンは半角2文字以上が必要。
@@ -128,11 +174,23 @@ async function searchRakuten(keyword) {
   return data.Items ?? [];
 }
 
-// アクセサリー・周辺機器を除外するためのキーワード
+// アクセサリー・周辺機器を除外するためのキーワード。
+// 裸の「ケース」は「ワイヤレス充電ケース付き」など本体商品まで落とすため使わない。
 const EXCLUDE_KEYWORDS = [
-  "ケース",
+  "シリコンケース",
+  "保護ケース",
+  "用ケース",
+  "イヤホンケース",
+  "ソフトケース",
+  "ハードケース",
+  "クリアケース",
+  "ケースカバー",
+  "ケースのみ",
+  "充電ケースのみ",
+  "ケース単体",
   "カバー",
   "ポーチ",
+  "カラビナ",
   "イヤーピース",
   "イヤーチップ",
   "イヤーパッド",
@@ -144,27 +202,41 @@ const EXCLUDE_KEYWORDS = [
   "交換用",
   "ストラップ",
   "クリーニング",
+  "落下防止",
 ];
 
-// 機種名(型番)が商品名に含まれているものを候補とし、
-// 価格レンジ・除外キーワードで足切りしたうえでレビュー件数が多い順に採用
-function findBestMatch(earphone, items) {
-  const normalizedModel = normalize(earphone.name);
+// 機種名のベース部分が商品名に含まれているものを候補とし、
+// 括弧付きバリアント・価格レンジ・除外キーワードで足切りしたうえでレビュー件数が多い順に採用
+function findBestMatch(earphone, items, variantIndex) {
+  const { baseName, variant } = parseModelName(earphone.name);
+  const normalizedBase = normalize(baseName);
+  const siblingVariants = variantIndex.get(normalizedBase) ?? [];
   const currentPrice = earphone.price;
 
   const candidates = items.filter((item) => {
     const itemName = item.itemName ?? "";
     const normalizedItemName = normalize(itemName);
 
-    if (!normalizedItemName.includes(normalizedModel)) return false;
+    if (!normalizedItemName.includes(normalizedBase)) return false;
 
-    // 除外キーワード: イヤーピース・ケース等の周辺アクセサリーを落とす
+    // 除外キーワード: シリコンケース・カバー等の周辺アクセサリーを落とす
     if (EXCLUDE_KEYWORDS.some((kw) => itemName.includes(kw))) return false;
 
     // 価格レンジ: 現在価格の 0.4〜2.5 倍外は本体以外の可能性が高い
     if (currentPrice != null && currentPrice > 0 && item.itemPrice != null) {
       const ratio = item.itemPrice / currentPrice;
       if (ratio < 0.4 || ratio > 2.5) return false;
+    }
+
+    // 括弧付き型番違いの振り分け
+    // - バリアント機: タイトルにその語句(または略語)を必須
+    // - 無印機: 兄弟バリアント語句を含む商品は除外
+    if (variant) {
+      if (!itemMatchesVariant(itemName, variant)) return false;
+    } else if (siblingVariants.length > 0) {
+      if (siblingVariants.some((v) => itemMatchesVariant(itemName, v))) {
+        return false;
+      }
     }
 
     return true;
@@ -192,13 +264,14 @@ async function main() {
 
   console.log(`対象機種: ${earphones.length}件\n`);
 
+  const variantIndex = buildVariantIndex(earphones);
   const summary = { updated: [], skipped: [], failed: [] };
 
   for (const earphone of earphones) {
     const keyword = buildSearchKeyword(earphone.brand, earphone.name);
     try {
       const items = await searchRakuten(keyword);
-      const match = findBestMatch(earphone, items);
+      const match = findBestMatch(earphone, items, variantIndex);
 
       if (!match) {
         summary.skipped.push({
@@ -220,6 +293,8 @@ async function main() {
           rakutenPrice,
           shopPrice: earphone.price,
           itemName: match.itemName,
+          previousUrl: earphone.rakuten_url,
+          previousPrice: earphone.rakuten_price,
         });
       } else {
         const { error: updateError } = await supabase
@@ -276,6 +351,14 @@ async function main() {
       console.log(`- ${s.name}: ${priceInfo}`);
       if (s.itemName) console.log(`    ${s.itemName}`);
       console.log(`    ${s.rakutenUrl}`);
+      if (
+        DRY_RUN &&
+        s.previousUrl != null &&
+        s.previousUrl !== s.rakutenUrl
+      ) {
+        console.log(`    [差分] 旧URL: ${s.previousUrl}`);
+        console.log(`    [差分] 旧価格: ¥${s.previousPrice}`);
+      }
     });
   }
   if (summary.skipped.length > 0) {

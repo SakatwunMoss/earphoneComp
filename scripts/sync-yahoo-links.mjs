@@ -105,7 +105,50 @@ function normalize(str) {
   return str
     .normalize("NFKC")
     .toLowerCase()
-    .replace(/[\s\-_()（）/／,、]/g, "");
+    .replace(/[\s\-_()（）/／,、。.．]/g, "");
+}
+
+// 「AirPods 5(ワイヤレス充電ケース付き)」→ baseName / variant に分割
+function parseModelName(name) {
+  const m = name.match(/^(.+?)\s*[（(]([^）)]+)[）)]\s*$/);
+  if (!m) return { baseName: name, variant: null };
+  return { baseName: m[1].trim(), variant: m[2].trim() };
+}
+
+// 括弧内の型番違いを商品タイトル照合用の針に展開
+function variantNeedles(variant) {
+  const needles = [variant];
+  const stripped = variant.replace(/(付き|搭載|モデル|版)$/u, "");
+  if (stripped && stripped !== variant) needles.push(stripped);
+
+  const norm = normalize(variant);
+  if (norm.includes("anc")) {
+    needles.push(
+      "ANC",
+      "アクティブノイズキャンセリング",
+      "ノイズキャンセリング",
+      "ノイキャン",
+    );
+  }
+  return [...new Set(needles)];
+}
+
+function itemMatchesVariant(itemName, variant) {
+  const normItem = normalize(itemName);
+  return variantNeedles(variant).some((needle) =>
+    normItem.includes(normalize(needle)),
+  );
+}
+
+function buildVariantIndex(earphones) {
+  const index = new Map();
+  for (const earphone of earphones) {
+    const { baseName, variant } = parseModelName(earphone.name);
+    const key = normalize(baseName);
+    if (!index.has(key)) index.set(key, []);
+    if (variant) index.get(key).push(variant);
+  }
+  return index;
 }
 
 function buildSearchKeyword(brand, name) {
@@ -288,10 +331,23 @@ async function searchYahoo(keyword) {
   return data.hits ?? [];
 }
 
+// アクセサリー・周辺機器を除外するためのキーワード。
+// 裸の「ケース」は「ワイヤレス充電ケース付き」など本体商品まで落とすため使わない。
 const EXCLUDE_KEYWORDS = [
-  "ケース",
+  "シリコンケース",
+  "保護ケース",
+  "用ケース",
+  "イヤホンケース",
+  "ソフトケース",
+  "ハードケース",
+  "クリアケース",
+  "ケースカバー",
+  "ケースのみ",
+  "充電ケースのみ",
+  "ケース単体",
   "カバー",
   "ポーチ",
+  "カラビナ",
   "イヤーピース",
   "イヤーチップ",
   "イヤーパッド",
@@ -303,17 +359,20 @@ const EXCLUDE_KEYWORDS = [
   "交換用",
   "ストラップ",
   "クリーニング",
+  "落下防止",
 ];
 
-function findBestMatch(earphone, hits) {
-  const normalizedModel = normalize(earphone.name);
+function findBestMatch(earphone, hits, variantIndex) {
+  const { baseName, variant } = parseModelName(earphone.name);
+  const normalizedBase = normalize(baseName);
+  const siblingVariants = variantIndex.get(normalizedBase) ?? [];
   const currentPrice = earphone.price;
 
   const candidates = hits.filter((hit) => {
     const itemName = hit.name ?? "";
     const normalizedItemName = normalize(itemName);
 
-    if (!normalizedItemName.includes(normalizedModel)) return false;
+    if (!normalizedItemName.includes(normalizedBase)) return false;
 
     if (EXCLUDE_KEYWORDS.some((kw) => itemName.includes(kw))) return false;
 
@@ -321,6 +380,14 @@ function findBestMatch(earphone, hits) {
     if (currentPrice != null && currentPrice > 0 && itemPrice != null) {
       const ratio = itemPrice / currentPrice;
       if (ratio < 0.4 || ratio > 2.5) return false;
+    }
+
+    if (variant) {
+      if (!itemMatchesVariant(itemName, variant)) return false;
+    } else if (siblingVariants.length > 0) {
+      if (siblingVariants.some((v) => itemMatchesVariant(itemName, v))) {
+        return false;
+      }
     }
 
     return true;
@@ -364,13 +431,15 @@ async function main() {
 
   console.log(`対象機種: ${targets.length}件\n`);
 
+  // バリアント索引は全件から作る（SYNC_LIMIT時も兄弟機を見落とさない）
+  const variantIndex = buildVariantIndex(earphones);
   const summary = { updated: [], skipped: [], failed: [] };
 
   for (const earphone of targets) {
     const keyword = buildSearchKeyword(earphone.brand, earphone.name);
     try {
       const hits = await searchYahoo(keyword);
-      const match = findBestMatch(earphone, hits);
+      const match = findBestMatch(earphone, hits, variantIndex);
 
       if (!match) {
         summary.skipped.push({
@@ -401,6 +470,8 @@ async function main() {
           yahooPrice,
           shopPrice: earphone.price,
           itemName: match.name,
+          previousUrl: earphone.yahoo_url,
+          previousPrice: earphone.yahoo_price,
         });
       } else {
         const { error: updateError } = await supabase
@@ -457,6 +528,10 @@ async function main() {
       console.log(`- ${s.name}: ${priceInfo}`);
       if (s.itemName) console.log(`    ${s.itemName}`);
       console.log(`    ${s.yahooUrl}`);
+      if (DRY_RUN && s.previousUrl != null && s.previousUrl !== s.yahooUrl) {
+        console.log(`    [差分] 旧URL: ${s.previousUrl}`);
+        console.log(`    [差分] 旧価格: ¥${s.previousPrice}`);
+      }
     });
   }
   if (summary.skipped.length > 0) {
