@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 
+import { DiagnoseReturningGuard } from "@/components/diagnose/DiagnoseReturningGuard";
 import { Footer } from "@/components/Footer";
 import { GoogleAnalytics } from "@/components/GoogleAnalytics";
 import { Header } from "@/components/Header";
@@ -76,6 +77,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="flex min-h-full flex-col bg-white text-gray-900">
         <GoogleAnalytics />
+        <DiagnoseReturningGuard />
         <Header />
         {children}
         <Footer />

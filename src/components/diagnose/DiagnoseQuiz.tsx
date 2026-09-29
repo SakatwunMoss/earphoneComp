@@ -16,6 +16,21 @@ import {
 import { DiagnoseResults } from "@/components/diagnose/DiagnoseResults";
 import { diagnoseCopy, type BilingualCopy } from "@/lib/diagnose/copy";
 import {
+  clearDiagnoseReturning,
+  clearDiagnoseState,
+  createInitialDraft,
+  isDiagnoseResumeHref,
+  loadDiagnoseState,
+  markDiagnoseReturning,
+  markMemoryRestoredFinished,
+  onDiagnosePageLeave,
+  sanitizeSelectedIds,
+  saveDiagnoseState,
+  selectedIdsEqual,
+  shouldRestoreFinished,
+  type PersistedDraft,
+} from "@/lib/diagnose/persist";
+import {
   recommendEarphones,
   type BudgetPreference,
   type FormPreference,
@@ -44,23 +59,9 @@ type DiagnoseQuizProps = {
   earphones: Earphone[];
 };
 
-type DraftAnswers = {
-  scene: SceneId | null;
-  nc: NcPreference | null;
-  form: FormPreference | null;
-  budget: BudgetPreference | null;
-  priorities: PriorityId[];
-  water: WaterPreference | null;
-};
+type DraftAnswers = PersistedDraft;
 
-const INITIAL_DRAFT: DraftAnswers = {
-  scene: null,
-  nc: null,
-  form: null,
-  budget: null,
-  priorities: [],
-  water: null,
-};
+const INITIAL_DRAFT: DraftAnswers = createInitialDraft();
 
 const { quiz: quizCopy, results: resultsCopy } = diagnoseCopy;
 
@@ -73,14 +74,17 @@ function scrollBehavior(): ScrollBehavior {
 }
 
 export function DiagnoseQuiz({ earphones }: DiagnoseQuizProps) {
+  const [hydrated, setHydrated] = useState(false);
   const [stepIndex, setStepIndex] = useState(0);
   const [draft, setDraft] = useState<DraftAnswers>(INITIAL_DRAFT);
   const [finished, setFinished] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const questionTopRef = useRef<HTMLDivElement>(null);
   const resultsTopRef = useRef<HTMLDivElement>(null);
   const prevNavRef = useRef<{ stepIndex: number; finished: boolean } | null>(
     null,
   );
+  const restoreScrollRef = useRef(false);
 
   const step = STEPS[stepIndex];
   const progress = finished
@@ -98,10 +102,109 @@ export function DiagnoseQuiz({ earphones }: DiagnoseQuizProps) {
     return recommendEarphones(earphones, answers, 5);
   }, [draft, earphones, finished]);
 
+  // Restore from sessionStorage after mount (avoid SSR hydration mismatch).
   useEffect(() => {
+    const stored = loadDiagnoseState(STEPS.length);
+    if (stored) {
+      if (stored.finished) {
+        if (shouldRestoreFinished()) {
+          setDraft(stored.draft);
+          setStepIndex(stored.stepIndex);
+          setFinished(true);
+          setSelectedIds(stored.selectedIds);
+          restoreScrollRef.current = true;
+        } else {
+          // Nav link etc. — don't resurrect an old result screen.
+          clearDiagnoseState();
+        }
+      } else {
+        setDraft(stored.draft);
+        setStepIndex(stored.stepIndex);
+        setFinished(false);
+        setSelectedIds([]);
+      }
+    }
+    setHydrated(true);
+  }, []);
+
+  // Persist on change (after restore).
+  useEffect(() => {
+    if (!hydrated) {
+      return;
+    }
+    saveDiagnoseState({ draft, stepIndex, finished, selectedIds });
+  }, [draft, stepIndex, finished, selectedIds, hydrated]);
+
+  // Drop compare IDs that vanished after result recalculation.
+  useEffect(() => {
+    if (!hydrated || !finished || !result) {
+      return;
+    }
+    const available = result.items.map((item) => item.earphone.id);
+    const next = sanitizeSelectedIds(selectedIds, available);
+    if (!selectedIdsEqual(next, selectedIds)) {
+      setSelectedIds(next);
+    }
+  }, [hydrated, finished, result, selectedIds]);
+
+  // Mark returning when leaving for detail/compare so back can restore results.
+  useEffect(() => {
+    if (!hydrated || !finished) {
+      return;
+    }
+    function onClickCapture(event: MouseEvent) {
+      const target = event.target;
+      if (!(target instanceof Element)) {
+        return;
+      }
+      const anchor = target.closest("a[href]");
+      if (!(anchor instanceof HTMLAnchorElement)) {
+        return;
+      }
+      const href = anchor.getAttribute("href");
+      if (!href || href.startsWith("#")) {
+        return;
+      }
+      if (isDiagnoseResumeHref(href)) {
+        markDiagnoseReturning();
+      }
+    }
+    document.addEventListener("click", onClickCapture, true);
+    return () => document.removeEventListener("click", onClickCapture, true);
+  }, [hydrated, finished]);
+
+  // Keep finished in-session across remounts; clear that guard when leaving
+  // without a detail/compare return intent (so nav re-entry starts fresh).
+  useEffect(() => {
+    if (hydrated && finished) {
+      markMemoryRestoredFinished();
+    }
+  }, [hydrated, finished]);
+
+  // Clear returning after Strict Mode's double effect cycle settles.
+  useEffect(() => {
+    if (!hydrated) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      clearDiagnoseReturning();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [hydrated]);
+
+  useEffect(() => {
+    return () => {
+      onDiagnosePageLeave();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated) {
+      return;
+    }
     const prev = prevNavRef.current;
     prevNavRef.current = { stepIndex, finished };
-    // Skip initial mount (and React Strict Mode double-invoke with same values).
+    // Skip first paint after hydrate (and Strict Mode double-invoke with same values).
     if (
       prev === null ||
       (prev.stepIndex === stepIndex && prev.finished === finished)
@@ -115,12 +218,23 @@ export function DiagnoseQuiz({ earphones }: DiagnoseQuizProps) {
       : questionTopRef.current;
 
     target?.scrollIntoView({ behavior, block: "start" });
-  }, [stepIndex, finished]);
+  }, [stepIndex, finished, hydrated]);
+
+  // After restoring a finished session, jump to the results heading.
+  useEffect(() => {
+    if (!hydrated || !finished || !restoreScrollRef.current) {
+      return;
+    }
+    restoreScrollRef.current = false;
+    resultsTopRef.current?.scrollIntoView({ behavior: "auto", block: "start" });
+  }, [hydrated, finished]);
 
   function restart() {
-    setDraft(INITIAL_DRAFT);
+    clearDiagnoseState();
+    setDraft(createInitialDraft());
     setStepIndex(0);
     setFinished(false);
+    setSelectedIds([]);
   }
 
   function goNext() {
@@ -142,6 +256,10 @@ export function DiagnoseQuiz({ earphones }: DiagnoseQuizProps) {
 
   const canProceed = isStepComplete(step, draft);
 
+  if (!hydrated) {
+    return <DiagnoseQuizPlaceholder />;
+  }
+
   if (finished && result) {
     return (
       <div ref={resultsTopRef} className={QUIZ_SCROLL_MARGIN_CLASS}>
@@ -161,7 +279,12 @@ export function DiagnoseQuiz({ earphones }: DiagnoseQuizProps) {
             enClassName="text-gray-600"
           />
         </header>
-        <DiagnoseResults result={result} onRestart={restart} />
+        <DiagnoseResults
+          result={result}
+          selectedIds={selectedIds}
+          onSelectedIdsChange={setSelectedIds}
+          onRestart={restart}
+        />
       </div>
     );
   }
@@ -238,6 +361,59 @@ export function DiagnoseQuiz({ earphones }: DiagnoseQuizProps) {
               }
             />
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** SSR / 復元前の見た目。タイトルは診断ページと同じで空HTMLを避ける */
+function DiagnoseQuizPlaceholder() {
+  return (
+    <div aria-busy="true" aria-live="polite">
+      <header className="mb-8">
+        <BilingualText
+          as="h1"
+          copy={quizCopy.title}
+          size="3xl"
+          enClassName="text-gray-900"
+          jaClassName="!text-gray-600"
+        />
+        <BilingualText
+          as="p"
+          copy={quizCopy.intro}
+          size="sm"
+          className="mt-3 max-w-xl"
+          enClassName="text-gray-600"
+        />
+      </header>
+
+      <div className={`mb-6 ${QUIZ_SCROLL_MARGIN_CLASS}`}>
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <div className="h-3 w-28 animate-pulse rounded bg-gray-200" />
+          <div className="h-3 w-8 animate-pulse rounded bg-gray-200" />
+        </div>
+        <div className="h-1.5 overflow-hidden rounded-full bg-teal-100">
+          <div className="h-full w-1/6 rounded-full bg-teal-200" />
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-teal-100 bg-teal-50/40 p-5 sm:p-6">
+        <div className="space-y-3">
+          <div className="h-5 w-2/3 max-w-sm animate-pulse rounded bg-teal-100/80" />
+          <div className="h-4 w-1/2 max-w-xs animate-pulse rounded bg-teal-100/60" />
+        </div>
+        <div className="mt-4 flex flex-col gap-2">
+          {Array.from({ length: 4 }, (_, i) => (
+            <div
+              key={i}
+              className="h-14 animate-pulse rounded-xl border border-teal-100/80 bg-white/80"
+            />
+          ))}
+        </div>
+        <div className="mt-8 flex flex-wrap items-center gap-3">
+          <div className="h-12 w-24 animate-pulse rounded-xl bg-gray-200/80" />
+          <div className="h-12 w-28 animate-pulse rounded-xl bg-teal-200/80" />
         </div>
       </div>
     </div>

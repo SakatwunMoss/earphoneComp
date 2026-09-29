@@ -203,6 +203,10 @@ export const diagnoseCopy = {
     }),
     price: { en: "Price", ja: "価格" } satisfies BilingualCopy,
     category: { en: "Category", ja: "カテゴリ" } satisfies BilingualCopy,
+    viewDetails: {
+      en: "View details",
+      ja: "詳細を見る",
+    } satisfies BilingualCopy,
   },
   reasons: {
     hasNc: {
