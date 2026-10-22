@@ -1,5 +1,8 @@
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
+
+import { AffiliateActions } from "@/components/AffiliateActions";
+import type { Earphone } from "@/types/database";
 
 type Block =
   | { type: "heading"; text: string }
@@ -107,39 +110,83 @@ function renderInline(text: string): ReactNode[] {
   return nodes;
 }
 
+function ArticleProductLinks({ products }: { products: Earphone[] }) {
+  if (products.length === 0) {
+    return null;
+  }
+
+  return (
+    <aside
+      aria-label="関連商品の購入リンク"
+      className="rounded-xl border border-gray-200 bg-gray-50/70 p-4"
+    >
+      <ul className="space-y-4">
+        {products.map((product) => (
+          <li key={product.id}>
+            <p className="mb-2 text-sm font-medium text-gray-900">
+              {product.brand} {product.name}
+            </p>
+            <AffiliateActions
+              product={product}
+              placement="article"
+              density="compact"
+            />
+          </li>
+        ))}
+      </ul>
+    </aside>
+  );
+}
+
 type ColumnBodyProps = {
   body: string;
+  products?: Earphone[];
 };
 
-export function ColumnBody({ body }: ColumnBodyProps) {
+export function ColumnBody({ body, products = [] }: ColumnBodyProps) {
   const blocks = parseBlocks(body);
+  const firstHeadingIndex = blocks.findIndex((block) => block.type === "heading");
 
   return (
     <div className="space-y-6 text-sm leading-relaxed text-gray-600">
+      {firstHeadingIndex === -1 ? (
+        <ArticleProductLinks products={products} />
+      ) : null}
       {blocks.map((block, index) => {
-        if (block.type === "heading") {
-          return (
-            <h2
-              key={index}
-              className="pt-2 text-lg font-medium text-gray-900"
-            >
-              {block.text}
-            </h2>
-          );
+        const node = renderBlock(block, index);
+        if (index !== firstHeadingIndex) {
+          return node;
         }
 
-        if (block.type === "list") {
-          return (
-            <ul key={index} className="list-disc space-y-2 pl-5">
-              {block.items.map((item, itemIndex) => (
-                <li key={itemIndex}>{renderInline(item)}</li>
-              ))}
-            </ul>
-          );
-        }
-
-        return <p key={index}>{renderInline(block.text)}</p>;
+        return (
+          <Fragment key={index}>
+            {node}
+            <ArticleProductLinks products={products} />
+          </Fragment>
+        );
       })}
     </div>
   );
+}
+
+function renderBlock(block: Block, index: number): ReactNode {
+  if (block.type === "heading") {
+    return (
+      <h2 key={index} className="pt-2 text-lg font-medium text-gray-900">
+        {block.text}
+      </h2>
+    );
+  }
+
+  if (block.type === "list") {
+    return (
+      <ul key={index} className="list-disc space-y-2 pl-5">
+        {block.items.map((item, itemIndex) => (
+          <li key={itemIndex}>{renderInline(item)}</li>
+        ))}
+      </ul>
+    );
+  }
+
+  return <p key={index}>{renderInline(block.text)}</p>;
 }

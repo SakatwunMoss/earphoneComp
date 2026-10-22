@@ -4,6 +4,8 @@ import { notFound } from "next/navigation";
 
 import { ColumnBody } from "@/components/ColumnBody";
 import { ColumnRelatedProducts } from "@/components/ColumnRelatedProducts";
+import { PromotionNote } from "@/components/PromotionNote";
+import { hasAffiliateLink } from "@/lib/affiliate-display";
 import {
   columns,
   formatColumnDate,
@@ -70,7 +72,11 @@ export default async function ColumnDetailPage({ params }: PageProps) {
           {column.title}
         </h1>
 
-        <ColumnBody body={column.body} />
+        {relatedEarphones.some(hasAffiliateLink) ? (
+          <PromotionNote className="mb-6" />
+        ) : null}
+
+        <ColumnBody body={column.body} products={relatedEarphones} />
 
         <ColumnRelatedProducts earphones={relatedEarphones} />
       </main>
