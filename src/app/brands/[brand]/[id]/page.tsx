@@ -2,10 +2,13 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { AffiliateActions } from "@/components/AffiliateActions";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { Card } from "@/components/Card";
 import { JsonLd } from "@/components/JsonLd";
+import { PromotionNote } from "@/components/PromotionNote";
 import { RemoteImage } from "@/components/RemoteImage";
+import { hasAffiliateLink } from "@/lib/affiliate-display";
 import { brandFromUrlParam, brandPagePath, earphonePagePath } from "@/lib/brand-url";
 import {
   getEarphoneById,
@@ -13,7 +16,6 @@ import {
 } from "@/lib/earphones-data";
 import { formatBoolean, formatPrice } from "@/lib/format";
 import { buildProductJsonLd } from "@/lib/json-ld";
-import { shopLabelFromUrl } from "@/lib/shop-label";
 import { createPageMetadata } from "@/lib/site-metadata";
 
 type PageProps = {
@@ -54,6 +56,7 @@ export default async function EarphoneDetailPage({ params }: PageProps) {
   }
 
   const productJsonLd = buildProductJsonLd(earphone);
+  const showAffiliate = hasAffiliateLink(earphone);
 
   return (
     <div className="flex flex-1 flex-col px-6 py-10">
@@ -69,35 +72,47 @@ export default async function EarphoneDetailPage({ params }: PageProps) {
 
         <header className="mb-8">
           <Card className="p-6">
-            <div className="mb-6 max-w-md">
-              <RemoteImage
-                src={earphone.image_url}
-                alt={`${earphone.name} 商品画像`}
-                className="h-auto w-full max-w-md object-contain"
-                width={448}
-                height={448}
-                placeholderClassName="aspect-square w-full max-w-md"
-              />
+            <div className="flex flex-col gap-6 md:grid md:grid-cols-[minmax(0,16rem)_minmax(0,1fr)] md:items-start">
+              <div className="order-2 max-w-md md:order-1">
+                <RemoteImage
+                  src={earphone.image_url}
+                  alt={`${earphone.name} 商品画像`}
+                  className="h-auto w-full max-w-md object-contain"
+                  width={448}
+                  height={448}
+                  placeholderClassName="aspect-square w-full max-w-md"
+                />
+              </div>
+              <div className="order-1 md:order-2">
+                <h1 className="mb-3 text-3xl font-semibold tracking-tight text-gray-900 sm:text-4xl">
+                  {earphone.name}
+                </h1>
+                <dl className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-gray-600">
+                  <div className="flex gap-2">
+                    <dt className="font-medium text-gray-500">ブランド</dt>
+                    <dd>{earphone.brand}</dd>
+                  </div>
+                  <div className="flex gap-2">
+                    <dt className="font-medium text-gray-500">カテゴリ</dt>
+                    <dd>{earphone.category}</dd>
+                  </div>
+                  <div className="flex gap-2">
+                    <dt className="font-medium text-gray-500">価格</dt>
+                    <dd className="font-medium tracking-tight">
+                      {formatPrice(earphone.price)}
+                    </dd>
+                  </div>
+                </dl>
+                {showAffiliate ? (
+                  <PromotionNote className="mt-4" />
+                ) : null}
+                <AffiliateActions
+                  product={earphone}
+                  placement="detail_top"
+                  className="mt-4"
+                />
+              </div>
             </div>
-            <h1 className="mb-3 text-3xl font-semibold tracking-tight text-gray-900 sm:text-4xl">
-              {earphone.name}
-            </h1>
-            <dl className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-gray-600">
-              <div className="flex gap-2">
-                <dt className="font-medium text-gray-500">ブランド</dt>
-                <dd>{earphone.brand}</dd>
-              </div>
-              <div className="flex gap-2">
-                <dt className="font-medium text-gray-500">カテゴリ</dt>
-                <dd>{earphone.category}</dd>
-              </div>
-              <div className="flex gap-2">
-                <dt className="font-medium text-gray-500">価格</dt>
-                <dd className="font-medium tracking-tight">
-                  {formatPrice(earphone.price)}
-                </dd>
-              </div>
-            </dl>
           </Card>
         </header>
 
@@ -190,61 +205,6 @@ export default async function EarphoneDetailPage({ params }: PageProps) {
               </tbody>
             </table>
           </div>
-
-          {earphone.rakuten_url || earphone.yahoo_url ? (
-            <div className="mt-6 flex flex-wrap gap-3">
-              {earphone.url ? (
-                <a
-                  href={earphone.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-baseline gap-2 rounded-lg border border-teal-200 bg-teal-50 px-4 py-2.5 text-sm font-medium text-teal-700 transition-colors hover:border-teal-300 hover:bg-teal-100"
-                >
-                  <span>{shopLabelFromUrl(earphone.url)}で見る</span>
-                  <span className="font-normal tracking-tight text-teal-600/80">
-                    {formatPrice(earphone.price)}
-                  </span>
-                </a>
-              ) : null}
-              {earphone.rakuten_url ? (
-                <a
-                  href={earphone.rakuten_url}
-                  target="_blank"
-                  rel="nofollow sponsored noopener"
-                  className="inline-flex items-baseline gap-2 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-medium text-rose-700 transition-colors hover:border-rose-300 hover:bg-rose-100"
-                >
-                  <span>楽天市場で見る</span>
-                  <span className="font-normal tracking-tight text-rose-600/80">
-                    {formatPrice(earphone.rakuten_price)}
-                  </span>
-                </a>
-              ) : null}
-              {earphone.yahoo_url ? (
-                <a
-                  href={earphone.yahoo_url}
-                  target="_blank"
-                  rel="nofollow sponsored noopener"
-                  className="inline-flex items-baseline gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-medium text-red-700 transition-colors hover:border-red-300 hover:bg-red-100"
-                >
-                  <span>Yahoo!ショッピングで見る</span>
-                  <span className="font-normal tracking-tight text-red-600/80">
-                    {formatPrice(earphone.yahoo_price)}
-                  </span>
-                </a>
-              ) : null}
-            </div>
-          ) : earphone.url ? (
-            <p className="mt-6">
-              <a
-                href={earphone.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-block text-sm font-medium text-teal-600 underline-offset-2 transition-colors hover:text-teal-700 hover:underline"
-              >
-                購入先を見る →
-              </a>
-            </p>
-          ) : null}
         </section>
 
         {earphone.long_description?.trim() ? (
@@ -269,6 +229,14 @@ export default async function EarphoneDetailPage({ params }: PageProps) {
                 ))}
             </div>
           </section>
+        ) : null}
+
+        {showAffiliate ? (
+          <AffiliateActions
+            product={earphone}
+            placement="detail_bottom"
+            className="mt-10"
+          />
         ) : null}
 
         <p className="mt-8">
