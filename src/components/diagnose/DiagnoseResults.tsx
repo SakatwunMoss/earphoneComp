@@ -9,12 +9,15 @@ import {
   type ReactNode,
 } from "react";
 
+import { AffiliateActions } from "@/components/AffiliateActions";
 import {
   BilingualButtonLabel,
   BilingualText,
 } from "@/components/BilingualText";
 import { CompareFloatingBar } from "@/components/CompareFloatingBar";
+import { PromotionNote } from "@/components/PromotionNote";
 import { RemoteImage } from "@/components/RemoteImage";
+import { hasAffiliateLink } from "@/lib/affiliate-display";
 import { comparePagePath, earphonePagePath } from "@/lib/brand-url";
 import { diagnoseCopy, type BilingualCopy } from "@/lib/diagnose/copy";
 import {
@@ -180,6 +183,10 @@ export function DiagnoseResults({
         </div>
       ) : null}
 
+      {items.some((item) => hasAffiliateLink(item.earphone)) ? (
+        <PromotionNote className="mb-4" />
+      ) : null}
+
       <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {items.map((item, index) => (
           <ResultCard
@@ -327,6 +334,16 @@ function ResultCard({
             </ul>
 
             {renderDetailCue()}
+            <div
+              className="pointer-events-auto relative z-10 mt-4"
+              onClick={stopCardNavigation}
+            >
+              <AffiliateActions
+                product={earphone}
+                placement="card"
+                density="compact"
+              />
+            </div>
           </div>
         </div>
       </article>

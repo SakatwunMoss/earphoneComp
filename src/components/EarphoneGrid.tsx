@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { MouseEvent, ReactNode } from "react";
 
-import { Card } from "@/components/Card";
+import { AffiliateActions } from "@/components/AffiliateActions";
 import { RemoteImage } from "@/components/RemoteImage";
 import { earphonePagePath } from "@/lib/brand-url";
 import { formatPrice } from "@/lib/format";
@@ -34,14 +34,16 @@ export function EarphoneGrid({
 
         return (
           <li key={earphone.id}>
-            {compare ? (
-              <article className={`${cardInteractiveClassName} cursor-pointer`}>
-                <Link
-                  href={detailHref}
-                  className="absolute inset-0 z-0 rounded-xl"
-                  aria-label={`${earphone.name}の詳細を見る`}
-                />
+            <article
+              className={`${cardInteractiveClassName}${compare ? " cursor-pointer" : ""}`}
+            >
+              <Link
+                href={detailHref}
+                className="absolute inset-0 z-0 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2"
+                aria-label={`${earphone.name}の詳細を見る`}
+              />
 
+              {compare ? (
                 <div
                   className="relative z-10 border-b border-gray-100 bg-gray-50/60 px-4 py-3"
                   onClick={stopCardNavigation}
@@ -59,31 +61,9 @@ export function EarphoneGrid({
                     </span>
                   </label>
                 </div>
+              ) : null}
 
-                <div className="pointer-events-none relative">
-                  <RemoteImage
-                    src={earphone.image_url}
-                    alt={`${earphone.name} 商品画像`}
-                    className="h-48 w-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
-                    width={400}
-                    height={192}
-                    placeholderClassName="aspect-[5/3] h-48 w-full"
-                  />
-                  <div className="p-4">
-                    <h2 className="mb-2 text-lg font-medium tracking-tight text-gray-900 transition-colors group-hover:text-teal-800">
-                      {earphone.name}
-                    </h2>
-                    {renderSpecs(earphone, showBrand)}
-                    {renderDescription(earphone)}
-                    {renderDetailCue()}
-                  </div>
-                </div>
-              </article>
-            ) : (
-              <Card
-                href={detailHref}
-                className="group overflow-hidden p-0 transition-all hover:-translate-y-0.5"
-              >
+              <div className="pointer-events-none relative">
                 <RemoteImage
                   src={earphone.image_url}
                   alt={`${earphone.name} 商品画像`}
@@ -99,9 +79,10 @@ export function EarphoneGrid({
                   {renderSpecs(earphone, showBrand)}
                   {renderDescription(earphone)}
                   {renderDetailCue()}
+                  {renderPurchase(earphone)}
                 </div>
-              </Card>
-            )}
+              </div>
+            </article>
           </li>
         );
       })}
@@ -109,9 +90,24 @@ export function EarphoneGrid({
   );
 }
 
-/** カード全体リンクへのクリック伝播を止め、比較チェックだけを操作する */
+/** カード全体リンクへのクリック伝播を止め、比較チェックと購入ボタンだけを操作する */
 function stopCardNavigation(event: MouseEvent) {
   event.stopPropagation();
+}
+
+function renderPurchase(earphone: Earphone): ReactNode {
+  return (
+    <div
+      className="pointer-events-auto relative z-10 mt-4"
+      onClick={stopCardNavigation}
+    >
+      <AffiliateActions
+        product={earphone}
+        placement="card"
+        density="compact"
+      />
+    </div>
+  );
 }
 
 function renderDetailCue(): ReactNode {

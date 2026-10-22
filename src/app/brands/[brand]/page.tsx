@@ -6,6 +6,8 @@ import { BrandCompareGrid } from "@/components/BrandCompareGrid";
 import { FilterPanel } from "@/components/FilterPanel";
 import { JsonLd } from "@/components/JsonLd";
 import { PriceDisclaimer } from "@/components/PriceDisclaimer";
+import { PromotionNote } from "@/components/PromotionNote";
+import { hasAffiliateLink } from "@/lib/affiliate-display";
 import {
   parseEarphoneFilters,
   type EarphoneFilterState,
@@ -95,6 +97,9 @@ export default async function BrandPage({ params, searchParams }: PageProps) {
             {hasActiveFilters ? "（絞り込み後）" : "を登録中"}
           </p>
         </header>
+        {earphones.some(hasAffiliateLink) ? (
+          <PromotionNote className="mb-4" />
+        ) : null}
         <PriceDisclaimer className="mb-8" />
 
         <FilterPanel categories={categories}>
