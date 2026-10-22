@@ -20,6 +20,8 @@ type AffiliateActionsProps = {
   placement: AffiliatePlacement;
   /** default: 詳細向けの縦積み。compact: カード向けの横並び。 */
   density?: AffiliateDensity;
+  /** compact でも横並びせず、列の幅に合わせて縦に積む。 */
+  stack?: boolean;
   className?: string;
 };
 
@@ -57,6 +59,7 @@ export function AffiliateActions({
   product,
   placement,
   density = "default",
+  stack = false,
   className = "",
 }: AffiliateActionsProps) {
   const shops = shopLinks(product);
@@ -67,11 +70,12 @@ export function AffiliateActions({
     return null;
   }
 
-  const shopLayout = compact
-    ? shops.length > 1
+  const shopLayout =
+    compact && !stack && shops.length > 1
       ? "grid grid-cols-2 gap-2"
-      : "grid grid-cols-1 gap-2"
-    : "flex w-full max-w-md flex-col gap-4";
+      : compact
+        ? "flex flex-col gap-2"
+        : "flex w-full max-w-md flex-col gap-4";
 
   return (
     <div className={className}>

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { AffiliateActions } from "@/components/AffiliateActions";
 import { RemoteImage } from "@/components/RemoteImage";
 import { earphonePagePath } from "@/lib/brand-url";
 import { formatPrice } from "@/lib/format";
@@ -80,6 +81,19 @@ const BASE_COMPARE_ROWS: CompareRow[] = [
   },
 ];
 
+const PURCHASE_ROW: CompareRow = {
+  key: "purchase",
+  label: "購入",
+  render: (earphone) => (
+    <AffiliateActions
+      product={earphone}
+      placement="table"
+      density="compact"
+      stack
+    />
+  ),
+};
+
 const BRAND_ROW: CompareRow = {
   key: "brand",
   label: "ブランド",
@@ -114,6 +128,11 @@ function BooleanIndicator({ value }: { value: boolean }) {
   );
 }
 
+/** 表の先頭に置く。説明文までスクロールしなくても購入ボタンに届く。 */
+function withPurchaseRow(rows: CompareRow[]): CompareRow[] {
+  return [PURCHASE_ROW, ...rows];
+}
+
 function getLowestPrice(earphones: Earphone[]): number | null {
   const prices = earphones
     .map((earphone) => earphone.price)
@@ -140,9 +159,11 @@ export function CompareTable({
   brand,
 }: CompareTableProps) {
   const lowestPrice = getLowestPrice(earphones);
-  const rows = showBrandColumn
-    ? [IMAGE_ROW, BRAND_ROW, ...BASE_COMPARE_ROWS]
-    : [IMAGE_ROW, ...BASE_COMPARE_ROWS];
+  const rows = withPurchaseRow(
+    showBrandColumn
+      ? [IMAGE_ROW, BRAND_ROW, ...BASE_COMPARE_ROWS]
+      : [IMAGE_ROW, ...BASE_COMPARE_ROWS],
+  );
 
   return (
     <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
@@ -195,7 +216,7 @@ export function CompareTable({
                     key={earphone.id}
                     className={`${
                       row.isImage ? "px-4 py-4 align-middle" : "px-4 py-3 align-top"
-                    } ${
+                    } ${row.key === "purchase" ? "min-w-0" : ""} ${
                       isLowestPrice
                         ? "bg-teal-50 font-semibold text-teal-900"
                         : ""

@@ -4,6 +4,8 @@ import { notFound } from "next/navigation";
 
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { CompareTable } from "@/components/CompareTable";
+import { PromotionNote } from "@/components/PromotionNote";
+import { hasAffiliateLink } from "@/lib/affiliate-display";
 import {
   brandComparePagePath,
   brandFromUrlParam,
@@ -99,6 +101,9 @@ export default async function BrandComparePage({
           </p>
         </header>
 
+        {earphones.some(hasAffiliateLink) ? (
+          <PromotionNote className="mb-4" />
+        ) : null}
         <CompareTable brand={brand} earphones={earphones} />
 
         <p className="mt-6 text-xs text-gray-400">

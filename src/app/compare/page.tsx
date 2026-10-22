@@ -4,6 +4,8 @@ import { notFound } from "next/navigation";
 
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { CompareTable } from "@/components/CompareTable";
+import { PromotionNote } from "@/components/PromotionNote";
+import { hasAffiliateLink } from "@/lib/affiliate-display";
 import { comparePagePath } from "@/lib/brand-url";
 import { getEarphonesByIds } from "@/lib/earphones-data";
 import { createPageMetadata } from "@/lib/site-metadata";
@@ -74,6 +76,9 @@ export default async function ComparePage({ searchParams }: PageProps) {
           </p>
         </header>
 
+        {earphones.some(hasAffiliateLink) ? (
+          <PromotionNote className="mb-4" />
+        ) : null}
         <CompareTable earphones={earphones} showBrandColumn />
 
         <p className="mt-6 text-xs text-gray-400">
