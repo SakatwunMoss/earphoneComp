@@ -355,6 +355,9 @@ async function fetchPageHtmlOnce(url: string): Promise<FetchPageResult> {
     const response = await fetch(url, {
       headers: {
         Accept: "text/html,application/xhtml+xml",
+        // Node 同梱 Brotli デコーダ（CVE-2026-111497）を通さない。
+        // 既定の Accept-Encoding には br が含まれるため、gzip/deflate のみを送る。
+        "Accept-Encoding": "gzip, deflate",
         "Accept-Language": "ja-JP,ja;q=0.9",
         Referer: origin,
         "User-Agent":
