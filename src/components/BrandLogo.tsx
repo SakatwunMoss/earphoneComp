@@ -35,23 +35,26 @@ export function BrandLogo({
 }: BrandLogoProps) {
   const logoUrl = getBrandLogoUrl(brand);
   const [failed, setFailed] = useState(false);
-  const showWordmark = !logoUrl?.trim() || failed;
+
+  if (!logoUrl?.trim() || failed) {
+    return (
+      <div className={containerClassName}>
+        <BrandWordmark brand={brand} />
+      </div>
+    );
+  }
 
   return (
     <div className={containerClassName}>
-      {showWordmark ? (
-        <BrandWordmark brand={brand} />
-      ) : (
-        // eslint-disable-next-line @next/next/no-img-element -- 外部 URL / data URI を最適化なしで直接表示
-        <img
-          src={logoUrl.trim()}
-          alt={`${brand} ロゴ`}
-          className={className}
-          width={160}
-          height={64}
-          onError={() => setFailed(true)}
-        />
-      )}
+      {/* eslint-disable-next-line @next/next/no-img-element -- 外部 URL / data URI を最適化なしで直接表示 */}
+      <img
+        src={logoUrl.trim()}
+        alt={`${brand} ロゴ`}
+        className={className}
+        width={160}
+        height={64}
+        onError={() => setFailed(true)}
+      />
     </div>
   );
 }
