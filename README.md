@@ -137,3 +137,27 @@ Client ID は [Yahoo!デベロッパーネットワーク](https://developer.yah
 | `VC_PID` | バリューコマース pid |
 
 マッチしなかった機種は DB を変更せずスキップし、ログに理由を残します。
+
+## ブランドロゴの登録
+
+トップページのブランド一覧で使うロゴは、`src/lib/brandLogos.ts` の `brandLogos` マップで管理しています。登録がないブランドは、自動でブランド名の文字ロゴ（ワードマーク）になります。
+
+### 登録手順
+
+1. （任意）ロゴ画像を置く場合は `public/brand-logos/` に配置する（例: `public/brand-logos/final.svg`）。SVG または PNG を推奨。
+2. `src/lib/brandLogos.ts` にエントリを追加する。
+   - **キー**: DB / 画面で使うブランド名と完全一致（例: `"Final"`, `"OPPO"`）
+   - **値**: 画像 URL 文字列
+     - ローカル: `"/brand-logos/final.svg"`
+     - 外部: `"https://example.com/logo.svg"`
+     - data URI も可
+3. 反映を確認する（トップのブランドカード）。画像の読み込みに失敗した場合も文字ロゴにフォールバックします。
+
+```ts
+// src/lib/brandLogos.ts の例
+export const brandLogos: Record<string, string> = {
+  // ...既存
+  Final: "/brand-logos/final.svg",
+  OPPO: "https://example.com/oppo-logo.svg",
+};
+```
