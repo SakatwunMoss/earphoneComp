@@ -50,18 +50,33 @@ export function Footer() {
           最終更新: {updatedAt}
         </p>
 
-        {/* Begin Yahoo! JAPAN Web Services Attribution Snippet */}
-        <span style={{ margin: "15px 15px 15px 15px" }}>
-          <a
-            href="https://developer.yahoo.co.jp/sitemap/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-sm text-gray-600 transition-colors hover:text-teal-700"
-          >
-            Webサービス by Yahoo! JAPAN
-          </a>
-        </span>
-        {/* End Yahoo! JAPAN Web Services Attribution Snippet */}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          {/* Begin Yahoo! JAPAN Web Services Attribution Snippet */}
+          <span style={{ margin: "15px 15px 15px 15px" }}>
+            <a
+              href="https://developer.yahoo.co.jp/sitemap/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm text-gray-600 transition-colors hover:text-teal-700"
+            >
+              Webサービス by Yahoo! JAPAN
+            </a>
+          </span>
+          {/* End Yahoo! JAPAN Web Services Attribution Snippet */}
+
+          {/* Rakuten Web Services Attribution Snippet FROM HERE */}
+          <span style={{ margin: "15px 15px 15px 15px" }}>
+            <a
+              href="https://developers.rakuten.com/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm text-gray-600 transition-colors hover:text-teal-700"
+            >
+              Supported by Rakuten Developers
+            </a>
+          </span>
+          {/* Rakuten Web Services Attribution Snippet TO HERE */}
+        </div>
       </div>
     </footer>
   );

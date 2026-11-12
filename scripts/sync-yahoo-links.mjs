@@ -1,6 +1,7 @@
 // earphonesテーブルの各機種をYahoo!ショッピングで検索し、見つかった商品のアフィリエイトリンクを
 // yahoo_url / yahoo_price / yahoo_updated_at に保存するバッチスクリプト。
-// accept かつ image_url が空のときのみ、API の image.medium を image_url にセットする
+// accept かつ image_url が空のときのみ、API の exImage.url（image_size=600）を
+// image_url にセットする。exImage が無い場合は image.medium にフォールバック。
 // （既存 image_url は上書きしない）。
 // url / price 列（公式または現状掲載中ショップ）には一切書き込まない。
 //
@@ -48,6 +49,7 @@ import {
   parseSimpleCsv,
   pickYahooImageUrl,
   PRICE_SUGGESTION_COLUMNS,
+  YAHOO_PREFERRED_IMAGE_SIZE,
   probeFieldsFromMatch,
   rejectExtrasFromMatch,
   resolveImageUrlUpdate,
@@ -269,6 +271,8 @@ function buildYahooSearchUrl(keyword, priceRange = null) {
     "results=30",
     "sort=-review_count",
     "condition=new",
+    // exImage（最大 600x600）を返す。pickYahooImageUrl が優先参照する。
+    `image_size=${YAHOO_PREFERRED_IMAGE_SIZE}`,
   ];
   if (priceRange) {
     params.push(`price_from=${priceRange.minPrice}`);
@@ -335,6 +339,18 @@ function loadSearchAliases() {
     return data && typeof data === "object" ? data : {};
   } catch {
     console.warn(`search-aliases.json の読み込みに失敗: ${path}`);
+    return {};
+  }
+}
+
+function loadBrandAliases() {
+  const path = resolve(process.cwd(), "scripts/data/brand-aliases.json");
+  if (!existsSync(path)) return {};
+  try {
+    const data = JSON.parse(readFileSync(path, "utf-8"));
+    return data && typeof data === "object" ? data : {};
+  } catch {
+    console.warn(`brand-aliases.json の読み込みに失敗: ${path}`);
     return {};
   }
 }
@@ -419,6 +435,7 @@ async function main() {
   );
 
   const searchAliases = loadSearchAliases();
+  const brandAliases = loadBrandAliases();
 
   const { data: earphones, error } = await supabase
     .from("earphones")
@@ -447,6 +464,7 @@ async function main() {
     longerNameIndex,
     mapItem: mapYahooItem,
     config: priceConfig,
+    brandAliases,
   };
 
   /** @type {Array<Record<string, unknown>>} */
@@ -505,6 +523,7 @@ async function main() {
       earphone.brand,
       earphone.name,
       searchAliases,
+      brandAliases,
     );
     const priceRange = getApiPriceRange(earphone.price, priceConfig);
     try {

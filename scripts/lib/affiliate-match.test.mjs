@@ -1,6 +1,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
+  brandAliasList,
+  brandPresentInCandidate,
   buildLongerNameIndex,
   buildPriceSuggestions,
   buildSearchKeywordList,
@@ -21,9 +23,12 @@ import {
   isStaleSuspect,
   itemContainsModelToken,
   normalize,
+  enlargeRakutenImageUrl,
   pickRakutenImageUrl,
   pickYahooImageUrl,
+  RAKUTEN_IMAGE_EX_SIZE,
   resolveImageUrlUpdate,
+  YAHOO_PREFERRED_IMAGE_SIZE,
   searchWithKeywordFallback,
   stripParentheticals,
   urlPathSlug,
@@ -569,6 +574,73 @@ describe("price suggestions", () => {
   });
 });
 
+describe("brand aliases", () => {
+  const brandAliases = {
+    MilLink: ["Mi", "MiLink", "Mi-Link"],
+    OPPO: ["Oppo"],
+  };
+
+  it("resolves aliases case-insensitively (keys and alias dedupe)", () => {
+    assert.deepEqual(brandAliasList("millink", brandAliases), [
+      "Mi",
+      "MiLink",
+      "Mi-Link",
+    ]);
+    assert.deepEqual(brandAliasList("oppo", brandAliases), ["Oppo"]);
+    assert.deepEqual(
+      brandAliasList("OPPO", { OPPO: ["Oppo", "oppo", "OPPO"] }),
+      ["Oppo"],
+    );
+  });
+
+  it("passes brand-required check when MilLink itemBrand is Mi", () => {
+    const earphone = {
+      id: "millink-tune03",
+      brand: "MilLink",
+      name: "Mi Tune03",
+      price: 3980,
+    };
+    const item = {
+      itemName: "Mi Tune03 ワイヤレスイヤホン",
+      itemPrice: 3980,
+      itemBrand: "Mi",
+    };
+    const without = evaluateCandidate(earphone, item, ctxFor([earphone]));
+    assert.equal(without.ok, false);
+    assert.equal(without.reason, "brand_missing");
+
+    const withAliases = evaluateCandidate(earphone, item, {
+      ...ctxFor([earphone]),
+      brandAliases,
+    });
+    assert.equal(withAliases.ok, true);
+    assert.equal(withAliases.reason, null);
+
+    assert.equal(
+      brandPresentInCandidate(
+        "MilLink",
+        normalize(item.itemName),
+        normalize(item.itemBrand),
+        brandAliases,
+      ),
+      true,
+    );
+  });
+
+  it("includes brand aliases in search keyword list", () => {
+    const list = buildSearchKeywordList(
+      "MilLink",
+      "Mi Tune03",
+      {},
+      brandAliases,
+    );
+    assert.equal(list[0], "MilLink Mi Tune03");
+    assert.ok(list.includes("Mi Mi Tune03"));
+    assert.ok(list.includes("MiLink Mi Tune03"));
+    assert.ok(list.includes("Mi-Link Mi Tune03"));
+  });
+});
+
 describe("search keyword fallback", () => {
   it("builds brand+name, name-only, stripped, katakana, then aliases", () => {
     const list = buildSearchKeywordList("Google", "Pixel Buds Pro(初代)", {
@@ -823,7 +895,31 @@ describe("dry-run summary helpers", () => {
 });
 
 describe("image_url helpers", () => {
-  it("picks Rakuten mediumImageUrls first entry (string or imageUrl object)", () => {
+  it("enlarges Rakuten _ex size for display", () => {
+    assert.equal(RAKUTEN_IMAGE_EX_SIZE, "800x800");
+    assert.equal(
+      enlargeRakutenImageUrl(
+        "https://thumbnail.image.rakuten.co.jp/@0_mall/x/cabinet/a.jpg?_ex=128x128",
+      ),
+      "https://thumbnail.image.rakuten.co.jp/@0_mall/x/cabinet/a.jpg?_ex=800x800",
+    );
+    assert.equal(
+      enlargeRakutenImageUrl(
+        "https://thumbnail.image.rakuten.co.jp/@0_mall/x/cabinet/a.jpg",
+      ),
+      "https://thumbnail.image.rakuten.co.jp/@0_mall/x/cabinet/a.jpg?_ex=800x800",
+    );
+    assert.equal(
+      enlargeRakutenImageUrl(
+        "https://thumbnail.image.rakuten.co.jp/@0_mall/x/cabinet/a.jpg?foo=1",
+      ),
+      "https://thumbnail.image.rakuten.co.jp/@0_mall/x/cabinet/a.jpg?foo=1&_ex=800x800",
+    );
+    assert.equal(enlargeRakutenImageUrl(null), null);
+    assert.equal(enlargeRakutenImageUrl("  "), null);
+  });
+
+  it("picks Rakuten mediumImageUrls first entry and enlarges _ex", () => {
     assert.equal(
       pickRakutenImageUrl({
         mediumImageUrls: [
@@ -831,7 +927,7 @@ describe("image_url helpers", () => {
           "https://thumbnail.image.rakuten.co.jp/?_ex=128x128&id=b",
         ],
       }),
-      "https://thumbnail.image.rakuten.co.jp/?_ex=128x128&id=a",
+      "https://thumbnail.image.rakuten.co.jp/?_ex=800x800&id=a",
     );
     assert.equal(
       pickRakutenImageUrl({
@@ -839,13 +935,25 @@ describe("image_url helpers", () => {
           { imageUrl: "https://thumbnail.image.rakuten.co.jp/?_ex=128x128&id=c" },
         ],
       }),
-      "https://thumbnail.image.rakuten.co.jp/?_ex=128x128&id=c",
+      "https://thumbnail.image.rakuten.co.jp/?_ex=800x800&id=c",
     );
     assert.equal(pickRakutenImageUrl({ mediumImageUrls: [] }), null);
     assert.equal(pickRakutenImageUrl({}), null);
   });
 
-  it("picks Yahoo image.medium", () => {
+  it("prefers Yahoo exImage.url over image.medium", () => {
+    assert.equal(YAHOO_PREFERRED_IMAGE_SIZE, 600);
+    assert.equal(
+      pickYahooImageUrl({
+        image: { medium: "https://item-shopping.c.yimg.jp/i/g/abc" },
+        exImage: {
+          url: "https://item-shopping.c.yimg.jp/i/w/abc",
+          width: 600,
+          height: 600,
+        },
+      }),
+      "https://item-shopping.c.yimg.jp/i/w/abc",
+    );
     assert.equal(
       pickYahooImageUrl({
         image: { medium: "https://item-shopping.c.yimg.jp/i/g/abc" },

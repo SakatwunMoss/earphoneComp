@@ -195,18 +195,86 @@ export function katakanaBrandName(brand) {
 }
 
 /**
- * 検索キーワード候補を順に返す。
- * (a) ブランド+名前 (b) 名前のみ (c) 括弧除去名
- * (d) カタカナブランド+名前 / カタカナ+括弧除去名
- * (e) aliases["brand|name"]
+ * 登録ブランドに対する別名一覧（登録名自身は含まない）。
+ * キー比較は大文字小文字を区別しない。
+ * @param {string} brand
+ * @param {Record<string, string[]>} [brandAliases]
+ * @returns {string[]}
  */
-export function buildSearchKeywordList(brand, name, aliases = {}) {
+export function brandAliasList(brand, brandAliases = {}) {
+  if (brand == null || brand === "") return [];
+  const brandLower = String(brand).toLowerCase();
+  const entry = Object.entries(brandAliases ?? {}).find(
+    ([k]) => String(k).toLowerCase() === brandLower,
+  );
+  if (!entry || !Array.isArray(entry[1])) return [];
+  // 別名同士の重複のみ除外（登録名との大文字小文字差はキーワード用に残す）
+  const seen = new Set();
+  const out = [];
+  for (const raw of entry[1]) {
+    const alias = String(raw ?? "").trim();
+    if (!alias) continue;
+    const key = alias.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(alias);
+  }
+  return out;
+}
+
+/**
+ * 低価格帯のブランド必須チェック用: 登録ブランド＋別名のいずれかが
+ * 候補名または API ブランド欄に含まれるか（正規化後・大文字小文字無視）。
+ * @param {string} brand
+ * @param {string} normalizedItemName
+ * @param {string} normalizedBrandField
+ * @param {Record<string, string[]>} [brandAliases]
+ */
+export function brandPresentInCandidate(
+  brand,
+  normalizedItemName,
+  normalizedBrandField,
+  brandAliases = {},
+) {
+  const names = [brand, ...brandAliasList(brand, brandAliases)];
+  for (const name of names) {
+    const n = normalize(name);
+    if (!n) continue;
+    if (
+      normalizedItemName.includes(n) ||
+      normalizedBrandField.includes(n)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * 検索キーワード候補を順に返す。
+ * (a) ブランド+名前 (b) ブランド別名+名前 (c) 名前のみ (d) 括弧除去名
+ * (e) カタカナブランド+名前 / カタカナ+括弧除去名
+ * (f) aliases["brand|name"]
+ * @param {string} brand
+ * @param {string} name
+ * @param {Record<string, string[]>} [aliases] 機種単位の検索別名
+ * @param {Record<string, string[]>} [brandAliases] ブランド名の別名
+ */
+export function buildSearchKeywordList(
+  brand,
+  name,
+  aliases = {},
+  brandAliases = {},
+) {
   const key = `${brand}|${name}`;
   const aliasList = Array.isArray(aliases[key]) ? aliases[key] : [];
   const stripped = stripParentheticals(name);
   const kana = katakanaBrandName(brand);
   const candidates = [
     buildSearchKeyword(brand, name),
+    ...brandAliasList(brand, brandAliases).map((a) =>
+      buildSearchKeyword(a, name),
+    ),
     String(name ?? "").trim(),
     stripped,
   ];
@@ -581,10 +649,11 @@ export function isPriceInRange(itemPrice, currentPrice, config = getPriceGuardCo
  *
  * @param {EarphoneLike} earphone
  * @param {{ itemName: string, itemPrice?: number|null, itemBrand?: string|null }} item
- * @param {{ variantIndex: Map<string, string[]>, longerNameIndex: Map<string, string[]>, config?: ReturnType<typeof getPriceGuardConfig> }} ctx
+ * @param {{ variantIndex: Map<string, string[]>, longerNameIndex: Map<string, string[]>, config?: ReturnType<typeof getPriceGuardConfig>, brandAliases?: Record<string, string[]> }} ctx
  */
 export function evaluateCandidate(earphone, item, ctx) {
   const config = ctx.config ?? getPriceGuardConfig();
+  const brandAliases = ctx.brandAliases ?? {};
   const { baseName, variant } = parseModelName(earphone.name);
   const normalizedBase = normalize(baseName);
   const siblingVariants = ctx.variantIndex.get(normalizedBase) ?? [];
@@ -642,12 +711,15 @@ export function evaluateCandidate(earphone, item, ctx) {
     currentPrice > 0 &&
     currentPrice < config.lowThreshold
   ) {
-    const brandNorm = normalize(earphone.brand);
     const brandField = normalize(item.itemBrand ?? "");
     if (
-      brandNorm &&
-      !normalizedItemName.includes(brandNorm) &&
-      !brandField.includes(brandNorm)
+      earphone.brand &&
+      !brandPresentInCandidate(
+        earphone.brand,
+        normalizedItemName,
+        brandField,
+        brandAliases,
+      )
     ) {
       return { ok: false, reason: "brand_missing" };
     }
@@ -828,6 +900,7 @@ function pickBestRejected(rejected, dominantReason) {
  *   longerNameIndex: Map<string, string[]>,
  *   mapItem: (raw: any) => { itemName: string, itemPrice?: number|null, itemBrand?: string|null, itemUrl?: string|null, reviewCount?: number, raw: any },
  *   config?: ReturnType<typeof getPriceGuardConfig>,
+ *   brandAliases?: Record<string, string[]>,
  * }} options
  */
 export function findBestMatch(earphone, rawItems, options) {
@@ -1073,7 +1146,35 @@ export function isBlankImageUrl(url) {
 }
 
 /**
- * 楽天商品検索APIの mediumImageUrls 先頭を取り出す。
+ * 楽天 thumbnail CDN の `_ex=WxH` を大きいサイズへ差し替える。
+ * API の mediumImageUrls は 128x128 固定のため、表示用に CDN の公式サイズ指定を使う。
+ * 実画像より大きい指定でも CDN 側で原寸にクランプされる。
+ */
+export const RAKUTEN_IMAGE_EX_SIZE = "800x800";
+
+/**
+ * Yahoo Item Search v3 の image_size（exImage 用）。公式の最大は 600。
+ * @see https://developer.yahoo.co.jp/webapi/shopping/v3/itemsearch.html
+ */
+export const YAHOO_PREFERRED_IMAGE_SIZE = 600;
+
+/**
+ * 楽天画像 URL の `_ex=` を指定サイズへ書き換える（なければ付与）。
+ * @param {string|null|undefined} url
+ * @param {string} [exSize]
+ * @returns {string|null}
+ */
+export function enlargeRakutenImageUrl(url, exSize = RAKUTEN_IMAGE_EX_SIZE) {
+  if (isBlankImageUrl(url)) return null;
+  const s = String(url).trim();
+  if (/[?&]_ex=\d+x\d+/i.test(s)) {
+    return s.replace(/([?&]_ex=)\d+x\d+/i, `$1${exSize}`);
+  }
+  return s.includes("?") ? `${s}&_ex=${exSize}` : `${s}?_ex=${exSize}`;
+}
+
+/**
+ * 楽天商品検索APIの mediumImageUrls 先頭を取り出し、表示向けに拡大する。
  * formatVersion により string[] または { imageUrl }[] があり得る。
  * @param {any} item
  * @returns {string|null}
@@ -1082,23 +1183,29 @@ export function pickRakutenImageUrl(item) {
   const urls = item?.mediumImageUrls;
   if (!Array.isArray(urls) || urls.length === 0) return null;
   const first = urls[0];
+  let raw = null;
   if (typeof first === "string") {
     const s = first.trim();
-    return s || null;
-  }
-  if (first && typeof first.imageUrl === "string") {
+    raw = s || null;
+  } else if (first && typeof first.imageUrl === "string") {
     const s = first.imageUrl.trim();
-    return s || null;
+    raw = s || null;
   }
-  return null;
+  return enlargeRakutenImageUrl(raw);
 }
 
 /**
- * Yahoo!ショッピング itemSearch の image.medium を取り出す。
+ * Yahoo!ショッピング itemSearch の画像 URL を取り出す。
+ * image_size 指定時の exImage.url（最大 600x600）を優先し、なければ image.medium。
  * @param {any} hit
  * @returns {string|null}
  */
 export function pickYahooImageUrl(hit) {
+  const exUrl = hit?.exImage?.url;
+  if (typeof exUrl === "string") {
+    const s = exUrl.trim();
+    if (s) return s;
+  }
   const medium = hit?.image?.medium;
   if (typeof medium === "string") {
     const s = medium.trim();

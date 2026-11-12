@@ -1,6 +1,7 @@
 // earphonesテーブルの各機種を楽天市場で検索し、見つかった商品のアフィリエイトリンクを
 // rakuten_url / rakuten_price / rakuten_updated_at に保存するバッチスクリプト。
-// accept かつ image_url が空のときのみ、API の mediumImageUrls 先頭を image_url にセットする
+// accept かつ image_url が空のときのみ、API の mediumImageUrls 先頭を
+// `_ex=800x800` に拡大した URL を image_url にセットする
 // （既存 image_url は上書きしない）。
 // url / price 列（公式または現状掲載中ショップ）には一切書き込まない。
 //
@@ -183,6 +184,18 @@ function loadSearchAliases() {
   }
 }
 
+function loadBrandAliases() {
+  const path = resolve(process.cwd(), "scripts/data/brand-aliases.json");
+  if (!existsSync(path)) return {};
+  try {
+    const data = JSON.parse(readFileSync(path, "utf-8"));
+    return data && typeof data === "object" ? data : {};
+  } catch {
+    console.warn(`brand-aliases.json の読み込みに失敗: ${path}`);
+    return {};
+  }
+}
+
 function tryWritePriceSuggestions(ownRows, otherCsvRelPath, ownStore) {
   const otherCsvPath = resolve(process.cwd(), otherCsvRelPath);
   if (!existsSync(otherCsvPath)) {
@@ -258,6 +271,7 @@ async function main() {
   );
 
   const searchAliases = loadSearchAliases();
+  const brandAliases = loadBrandAliases();
 
   const { data: earphones, error } = await supabase
     .from("earphones")
@@ -281,6 +295,7 @@ async function main() {
     longerNameIndex,
     mapItem: mapRakutenItem,
     config: priceConfig,
+    brandAliases,
   };
 
   /** @type {Array<Record<string, unknown>>} */
@@ -339,6 +354,7 @@ async function main() {
       earphone.brand,
       earphone.name,
       searchAliases,
+      brandAliases,
     );
     const priceRange = getApiPriceRange(earphone.price, priceConfig);
     try {
