@@ -5,6 +5,7 @@
 // 実行方法:
 //   node scripts/sync-yahoo-links.mjs
 //   DRY_RUN=true node scripts/sync-yahoo-links.mjs
+//   DRY_RUN=true node scripts/sync-yahoo-links.mjs --clear-invalid
 //   SYNC_LIMIT=3 node scripts/sync-yahoo-links.mjs   # 先頭N件のみ（動作確認用）
 //
 // 環境変数:
@@ -18,10 +19,37 @@
 //   DRY_RUN                    "true"を指定すると実際の更新はせず、結果だけログ出力する
 //   SYNC_LIMIT                 （任意）処理する機種数の上限
 //   DEBUG                      "true"を指定するとYahoo APIリクエスト/エラーの詳細を出力する
+//   PRICE_RATIO_MIN / PRICE_RATIO_MAX / LOW_PRICE_THRESHOLD
+//   LOW_PRICE_RATIO_MIN / LOW_PRICE_RATIO_MAX
+//   REPORT_CSV                 （任意）DRY_RUN 時のCSV出力先。未指定時は scripts/tmp/yahoo-dry-run.csv
 
 import { createClient } from "@supabase/supabase-js";
-import { existsSync, readFileSync } from "fs";
-import { resolve } from "path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { dirname, resolve } from "path";
+import {
+  buildLongerNameIndex,
+  buildPriceSuggestions,
+  buildSearchKeywordList,
+  buildVariantIndex,
+  emptyRejectExtras,
+  findBestMatch,
+  findDuplicateUrlIds,
+  formatDryRunSummaryMarkdown,
+  formatPriceSuggestionSql,
+  formatReportCsv,
+  getPriceGuardConfig,
+  isPriceStaleSuspect,
+  isStaleLink,
+  isStaleSuspect,
+  parseCliFlags,
+  parseSimpleCsv,
+  PRICE_SUGGESTION_COLUMNS,
+  probeFieldsFromMatch,
+  rejectExtrasFromMatch,
+  searchMetaFields,
+  searchWithKeywordFallback,
+  summarizeReport,
+} from "./lib/affiliate-match.mjs";
 
 function loadEnvLocal() {
   const envPath = resolve(process.cwd(), ".env.local");
@@ -59,6 +87,8 @@ const DEBUG = process.env.DEBUG === "true";
 const SYNC_LIMIT = process.env.SYNC_LIMIT
   ? Number.parseInt(process.env.SYNC_LIMIT, 10)
   : null;
+const { clearInvalid } = parseCliFlags();
+const priceConfig = getPriceGuardConfig();
 
 const REQUIRED_ENV = {
   SUPABASE_URL,
@@ -89,74 +119,14 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 const YAHOO_ENDPOINT =
   "https://shopping.yahooapis.jp/ShoppingWebService/V3/itemSearch";
 
-// バリューコマース経由のアフィリエイトID（Yahoo API 仕様: UTF-8 URLエンコード文字列）
 const VC_AFFILIATE_ID = encodeURIComponent(
   `http://ck.jp.ap.valuecommerce.com/servlet/referral?sid=${VC_SID}&pid=${VC_PID}&vc_url=`,
 );
 
-// Yahoo!ショッピングAPIはレート制限があるため、リクエスト間隔を空ける
 const REQUEST_INTERVAL_MS = 2000;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function normalize(str) {
-  return str
-    .normalize("NFKC")
-    .toLowerCase()
-    .replace(/[\s\-_()（）/／,、。.．]/g, "");
-}
-
-// 「AirPods 5(ワイヤレス充電ケース付き)」→ baseName / variant に分割
-function parseModelName(name) {
-  const m = name.match(/^(.+?)\s*[（(]([^）)]+)[）)]\s*$/);
-  if (!m) return { baseName: name, variant: null };
-  return { baseName: m[1].trim(), variant: m[2].trim() };
-}
-
-// 括弧内の型番違いを商品タイトル照合用の針に展開
-function variantNeedles(variant) {
-  const needles = [variant];
-  const stripped = variant.replace(/(付き|搭載|モデル|版)$/u, "");
-  if (stripped && stripped !== variant) needles.push(stripped);
-
-  const norm = normalize(variant);
-  if (norm.includes("anc")) {
-    needles.push(
-      "ANC",
-      "アクティブノイズキャンセリング",
-      "ノイズキャンセリング",
-      "ノイキャン",
-    );
-  }
-  return [...new Set(needles)];
-}
-
-function itemMatchesVariant(itemName, variant) {
-  const normItem = normalize(itemName);
-  return variantNeedles(variant).some((needle) =>
-    normItem.includes(normalize(needle)),
-  );
-}
-
-function buildVariantIndex(earphones) {
-  const index = new Map();
-  for (const earphone of earphones) {
-    const { baseName, variant } = parseModelName(earphone.name);
-    const key = normalize(baseName);
-    if (!index.has(key)) index.set(key, []);
-    if (variant) index.get(key).push(variant);
-  }
-  return index;
-}
-
-function buildSearchKeyword(brand, name) {
-  return `${brand} ${name}`
-    .replace(/\s+(\d)\b/g, "$1")
-    .replace(/\s+\+/g, "+")
-    .replace(/\s+/g, " ")
-    .trim();
 }
 
 function maskSecret(value, visiblePrefix = 4) {
@@ -331,91 +301,115 @@ async function searchYahoo(keyword) {
   return data.hits ?? [];
 }
 
-// アクセサリー・周辺機器を除外するためのキーワード。
-// 裸の「ケース」は「ワイヤレス充電ケース付き」など本体商品まで落とすため使わない。
-const EXCLUDE_KEYWORDS = [
-  "シリコンケース",
-  "保護ケース",
-  "用ケース",
-  "イヤホンケース",
-  "ソフトケース",
-  "ハードケース",
-  "クリアケース",
-  "ケースカバー",
-  "ケースのみ",
-  "充電ケースのみ",
-  "ケース単体",
-  "カバー",
-  "ポーチ",
-  "カラビナ",
-  "イヤーピース",
-  "イヤーチップ",
-  "イヤーパッド",
-  "フィルム",
-  "保護",
-  "スペア",
-  "替え",
-  "互換",
-  "交換用",
-  "ストラップ",
-  "クリーニング",
-  "落下防止",
-];
+function mapYahooItem(hit) {
+  return {
+    itemName: hit.name ?? "",
+    itemPrice: hit.price ?? null,
+    itemBrand: hit.brand?.name ?? hit.seller?.name ?? null,
+    itemUrl: hit.url ?? "",
+    reviewCount: hit.review?.count ?? 0,
+    raw: hit,
+  };
+}
 
-function findBestMatch(earphone, hits, variantIndex) {
-  const { baseName, variant } = parseModelName(earphone.name);
-  const normalizedBase = normalize(baseName);
-  const siblingVariants = variantIndex.get(normalizedBase) ?? [];
-  const currentPrice = earphone.price;
+function loadSearchAliases() {
+  const path = resolve(process.cwd(), "scripts/data/search-aliases.json");
+  if (!existsSync(path)) return {};
+  try {
+    const data = JSON.parse(readFileSync(path, "utf-8"));
+    return data && typeof data === "object" ? data : {};
+  } catch {
+    console.warn(`search-aliases.json の読み込みに失敗: ${path}`);
+    return {};
+  }
+}
 
-  const candidates = hits.filter((hit) => {
-    const itemName = hit.name ?? "";
-    const normalizedItemName = normalize(itemName);
-
-    if (!normalizedItemName.includes(normalizedBase)) return false;
-
-    if (EXCLUDE_KEYWORDS.some((kw) => itemName.includes(kw))) return false;
-
-    const itemPrice = hit.price ?? null;
-    if (currentPrice != null && currentPrice > 0 && itemPrice != null) {
-      const ratio = itemPrice / currentPrice;
-      if (ratio < 0.4 || ratio > 2.5) return false;
-    }
-
-    if (variant) {
-      if (!itemMatchesVariant(itemName, variant)) return false;
-    } else if (siblingVariants.length > 0) {
-      if (siblingVariants.some((v) => itemMatchesVariant(itemName, v))) {
-        return false;
-      }
-    }
-
-    return true;
-  });
-
-  if (candidates.length === 0) return null;
-
-  candidates.sort(
-    (a, b) => (b.review?.count ?? 0) - (a.review?.count ?? 0),
+function tryWritePriceSuggestions(ownRows) {
+  const otherCsvPath = resolve(process.cwd(), "scripts/tmp/rakuten-dry-run.csv");
+  if (!existsSync(otherCsvPath)) {
+    console.log(
+      "\nprice_suggestion: scripts/tmp/rakuten-dry-run.csv がまだ無いためスキップ（両方揃った後に再生成）",
+    );
+    return;
+  }
+  const rakutenRows = parseSimpleCsv(readFileSync(otherCsvPath, "utf-8"));
+  const suggestions = buildPriceSuggestions(rakutenRows, ownRows);
+  const csvPath = resolve(process.cwd(), "scripts/tmp/price-suggestion.csv");
+  const sqlPath = resolve(
+    process.cwd(),
+    "scripts/tmp/price-update-suggestion.sql",
   );
-  return candidates[0];
+  mkdirSync(dirname(csvPath), { recursive: true });
+  writeFileSync(
+    csvPath,
+    formatReportCsv(suggestions, PRICE_SUGGESTION_COLUMNS),
+    "utf-8",
+  );
+  writeFileSync(sqlPath, formatPriceSuggestionSql(suggestions), "utf-8");
+  const auto = suggestions.filter((s) => s.status === "suggest");
+  const listOnly = suggestions.filter((s) => s.status === "list_only");
+  const review = suggestions.filter((s) => s.status === "needs_review");
+  console.log(
+    `\n--- price_suggestion: 自動${auto.length} / 一覧のみ${listOnly.length} / 要確認${review.length} ---`,
+  );
+  for (const s of suggestions) {
+    console.log(
+      `- [${s.status}] ${s.brand} ${s.name}: ¥${s.price} → ¥${s.suggested_price}` +
+        ` (比${s.suggest_to_price_ratio})` +
+        `\n    楽天出品: ${s.rakuten_probe_title} (¥${s.rakuten_probe_price})` +
+        `\n    Yahoo出品: ${s.yahoo_probe_title} (¥${s.yahoo_probe_price})`,
+    );
+  }
+  console.log(`CSV: ${csvPath}`);
+  console.log(`SQL(コメントのみ・実行しない): ${sqlPath}`);
+}
+
+function writeDryRunSummary(ownRows) {
+  const rows = [...ownRows];
+  const otherCsvPath = resolve(process.cwd(), "scripts/tmp/rakuten-dry-run.csv");
+  if (existsSync(otherCsvPath)) {
+    rows.push(...parseSimpleCsv(readFileSync(otherCsvPath, "utf-8")));
+  }
+  const md = formatDryRunSummaryMarkdown(rows);
+  const outPath = resolve(process.cwd(), "scripts/tmp/dry-run-summary.md");
+  mkdirSync(dirname(outPath), { recursive: true });
+  writeFileSync(outPath, md, "utf-8");
+  console.log(`\n--- dry-run-summary (reject/hold) ---`);
+  process.stdout.write(md);
+  console.log(`\n要約MD: ${outPath}`);
 }
 
 function isValidAffiliateUrl(url) {
   return typeof url === "string" && url.includes("ck.jp.ap.valuecommerce.com");
 }
 
+function resolveReportPath() {
+  if (process.env.REPORT_CSV?.trim()) return resolve(process.env.REPORT_CSV.trim());
+  return resolve(process.cwd(), "scripts/tmp/yahoo-dry-run.csv");
+}
+
 async function main() {
   if (DRY_RUN) {
     console.log("*** DRY_RUN モード: 実際のDB更新は行いません ***\n");
   }
+  if (clearInvalid) {
+    console.log("*** --clear-invalid: 範囲外の既存店舗価格を NULL 化します ***\n");
+  }
   if (SYNC_LIMIT != null && SYNC_LIMIT > 0) {
     console.log(`*** SYNC_LIMIT=${SYNC_LIMIT}: 先頭${SYNC_LIMIT}件のみ処理 ***\n`);
   }
+  console.log(
+    `価格ガード: 通常 ${priceConfig.ratioMin}–${priceConfig.ratioMax} / ` +
+      `${priceConfig.lowThreshold}円未満 ${priceConfig.lowMin}–${priceConfig.lowMax}\n`,
+  );
+
+  const searchAliases = loadSearchAliases();
 
   const { data: earphones, error } = await supabase
     .from("earphones")
-    .select("id, name, brand, price, url, yahoo_url, yahoo_price")
+    .select(
+      "id, name, brand, price, url, yahoo_url, yahoo_price, yahoo_updated_at, rakuten_url, rakuten_price, rakuten_updated_at",
+    )
     .order("brand")
     .order("name");
 
@@ -431,30 +425,201 @@ async function main() {
 
   console.log(`対象機種: ${targets.length}件\n`);
 
-  // バリアント索引は全件から作る（SYNC_LIMIT時も兄弟機を見落とさない）
   const variantIndex = buildVariantIndex(earphones);
-  const summary = { updated: [], skipped: [], failed: [] };
+  const longerNameIndex = buildLongerNameIndex(earphones);
+  const matchOptions = {
+    variantIndex,
+    longerNameIndex,
+    mapItem: mapYahooItem,
+    config: priceConfig,
+  };
+
+  /** @type {Array<Record<string, unknown>>} */
+  const reportRows = [];
+  const pendingAccepts = [];
+  const summary = {
+    updated: [],
+    skipped: [],
+    held: [],
+    failed: [],
+    cleared: [],
+  };
+  const staleSuspects = [];
+  const priceStaleSuspects = [];
+  const staleLinks = [];
 
   for (const earphone of targets) {
-    const keyword = buildSearchKeyword(earphone.brand, earphone.name);
-    try {
-      const hits = await searchYahoo(keyword);
-      const match = findBestMatch(earphone, hits, variantIndex);
+    if (isStaleSuspect(earphone.yahoo_price, earphone.price, priceConfig)) {
+      staleSuspects.push({
+        id: earphone.id,
+        brand: earphone.brand,
+        name: earphone.name,
+        price: earphone.price,
+        yahoo_price: earphone.yahoo_price,
+        yahoo_url: earphone.yahoo_url,
+      });
+    }
+    if (
+      isPriceStaleSuspect(
+        earphone.price,
+        earphone.rakuten_price,
+        earphone.yahoo_price,
+      )
+    ) {
+      priceStaleSuspects.push({
+        id: earphone.id,
+        brand: earphone.brand,
+        name: earphone.name,
+        price: earphone.price,
+        rakuten_price: earphone.rakuten_price,
+        yahoo_price: earphone.yahoo_price,
+      });
+    }
+    if (isStaleLink(earphone.yahoo_updated_at)) {
+      staleLinks.push({
+        id: earphone.id,
+        brand: earphone.brand,
+        name: earphone.name,
+        store: "yahoo",
+        updated_at: earphone.yahoo_updated_at,
+        url: earphone.yahoo_url,
+      });
+    }
 
-      if (!match) {
-        summary.skipped.push({
+    const keywords = buildSearchKeywordList(
+      earphone.brand,
+      earphone.name,
+      searchAliases,
+    );
+    try {
+      const {
+        items: hits,
+        keywordUsed,
+        hitCount,
+        attempts,
+      } = await searchWithKeywordFallback(searchYahoo, keywords, {
+        sleep,
+        intervalMs: REQUEST_INTERVAL_MS,
+      });
+      const searchMeta = searchMetaFields({
+        keywordUsed,
+        hitCount,
+        attempts,
+      });
+      const result = findBestMatch(earphone, hits, matchOptions);
+
+      if (result.decision === "hold") {
+        const match = result.match;
+        const yahooUrl = match?.url ?? "";
+        const yahooPrice = match?.price ?? null;
+        reportRows.push({
+          id: earphone.id,
+          brand: earphone.brand,
+          name: earphone.name,
+          store: "yahoo",
+          catalog_price: earphone.price,
+          old_url: earphone.yahoo_url,
+          new_url: yahooUrl,
+          old_price: earphone.yahoo_price,
+          new_price: yahooPrice,
+          ratio: result.ratio != null ? Number(result.ratio.toFixed(4)) : "",
+          decision: "hold",
+          reason: result.reason,
+          ...emptyRejectExtras(),
+          ...searchMeta,
+          ...probeFieldsFromMatch(result),
+        });
+        summary.held.push({
           name: `${earphone.brand} ${earphone.name}`,
-          reason: "一致する商品が見つかりませんでした",
+          reason: result.reason,
+          itemName: match?.name,
+          keywordUsed,
+          hitCount,
         });
         await sleep(REQUEST_INTERVAL_MS);
         continue;
       }
 
+      if (result.decision !== "accept") {
+        reportRows.push({
+          id: earphone.id,
+          brand: earphone.brand,
+          name: earphone.name,
+          store: "yahoo",
+          catalog_price: earphone.price,
+          old_url: earphone.yahoo_url,
+          new_url: "",
+          old_price: earphone.yahoo_price,
+          new_price: "",
+          ratio: "",
+          decision: "reject",
+          reason: result.reason,
+          ...rejectExtrasFromMatch(result),
+          ...searchMeta,
+        });
+        summary.skipped.push({
+          name: `${earphone.brand} ${earphone.name}`,
+          reason: result.reason,
+          rejectedTitle: result.rejectedTitle,
+          topTitles: result.topTitles,
+          excludeTitles: result.excludeTitles,
+          keywordUsed,
+          hitCount,
+          keywordHitCounts: searchMeta.keyword_hit_counts,
+        });
+
+        if (
+          clearInvalid &&
+          isStaleSuspect(earphone.yahoo_price, earphone.price, priceConfig)
+        ) {
+          if (!DRY_RUN) {
+            const { error: clearError } = await supabase
+              .from("earphones")
+              .update({
+                yahoo_url: null,
+                yahoo_price: null,
+                yahoo_updated_at: new Date().toISOString(),
+              })
+              .eq("id", earphone.id);
+            if (clearError) {
+              summary.failed.push({
+                name: `${earphone.brand} ${earphone.name}`,
+                reason: clearError.message,
+              });
+            } else {
+              summary.cleared.push(`${earphone.brand} ${earphone.name}`);
+            }
+          } else {
+            summary.cleared.push(`${earphone.brand} ${earphone.name}`);
+          }
+        }
+
+        await sleep(REQUEST_INTERVAL_MS);
+        continue;
+      }
+
+      const match = result.match;
       const yahooUrl = match.url;
       const yahooPrice = match.price ?? null;
-      const yahooUpdatedAt = new Date().toISOString();
 
       if (!isValidAffiliateUrl(yahooUrl)) {
+        reportRows.push({
+          id: earphone.id,
+          brand: earphone.brand,
+          name: earphone.name,
+          store: "yahoo",
+          catalog_price: earphone.price,
+          old_url: earphone.yahoo_url,
+          new_url: yahooUrl ?? "",
+          old_price: earphone.yahoo_price,
+          new_price: yahooPrice,
+          ratio: result.ratio != null ? Number(result.ratio.toFixed(4)) : "",
+          decision: "reject",
+          reason: "invalid_affiliate_url",
+          ...emptyRejectExtras(),
+          ...searchMeta,
+          ...probeFieldsFromMatch(result),
+        });
         summary.failed.push({
           name: `${earphone.brand} ${earphone.name}`,
           reason: `アフィリエイトURLが取得できませんでした: ${yahooUrl}`,
@@ -463,41 +628,32 @@ async function main() {
         continue;
       }
 
-      if (DRY_RUN) {
-        summary.updated.push({
-          name: `${earphone.brand} ${earphone.name}`,
-          yahooUrl,
-          yahooPrice,
-          shopPrice: earphone.price,
-          itemName: match.name,
-          previousUrl: earphone.yahoo_url,
-          previousPrice: earphone.yahoo_price,
-        });
-      } else {
-        const { error: updateError } = await supabase
-          .from("earphones")
-          .update({
-            yahoo_url: yahooUrl,
-            yahoo_price: yahooPrice,
-            yahoo_updated_at: yahooUpdatedAt,
-          })
-          .eq("id", earphone.id);
-
-        if (updateError) {
-          summary.failed.push({
-            name: `${earphone.brand} ${earphone.name}`,
-            reason: updateError.message,
-          });
-        } else {
-          summary.updated.push({
-            name: `${earphone.brand} ${earphone.name}`,
-            yahooUrl,
-            yahooPrice,
-            shopPrice: earphone.price,
-          });
-        }
-      }
+      pendingAccepts.push({
+        earphone,
+        yahooUrl,
+        yahooPrice,
+        itemName: match.name,
+        ratio: result.ratio,
+        reason: result.reason,
+        priceProbe: result.priceProbe,
+        searchMeta,
+      });
     } catch (err) {
+      reportRows.push({
+        id: earphone.id,
+        brand: earphone.brand,
+        name: earphone.name,
+        store: "yahoo",
+        catalog_price: earphone.price,
+        old_url: earphone.yahoo_url,
+        new_url: "",
+        old_price: earphone.yahoo_price,
+        new_price: "",
+        ratio: "",
+        decision: "reject",
+        reason: `error:${err.message}`,
+        ...emptyRejectExtras(),
+      });
       summary.failed.push({
         name: `${earphone.brand} ${earphone.name}`,
         reason: err.message,
@@ -507,25 +663,208 @@ async function main() {
     await sleep(REQUEST_INTERVAL_MS);
   }
 
+  const dupIds = findDuplicateUrlIds(
+    pendingAccepts.map((p) => ({
+      id: p.earphone.id,
+      url: p.yahooUrl,
+      decision: "accept",
+    })),
+  );
+
+  for (const pending of pendingAccepts) {
+    const { earphone, yahooUrl, yahooPrice, itemName, ratio } = pending;
+
+    if (dupIds.has(earphone.id)) {
+      reportRows.push({
+        id: earphone.id,
+        brand: earphone.brand,
+        name: earphone.name,
+        store: "yahoo",
+        catalog_price: earphone.price,
+        old_url: earphone.yahoo_url,
+        new_url: yahooUrl,
+        old_price: earphone.yahoo_price,
+        new_price: yahooPrice,
+        ratio: ratio != null ? Number(ratio.toFixed(4)) : "",
+        decision: "reject",
+        reason: "duplicate_url",
+        ...emptyRejectExtras(),
+        ...probeFieldsFromMatch({ priceProbe: pending.priceProbe }),
+      });
+      summary.skipped.push({
+        name: `${earphone.brand} ${earphone.name}`,
+        reason: "duplicate_url",
+      });
+      continue;
+    }
+
+    const acceptReason = pending.reason ?? "";
+    reportRows.push({
+      id: earphone.id,
+      brand: earphone.brand,
+      name: earphone.name,
+      store: "yahoo",
+      catalog_price: earphone.price,
+      old_url: earphone.yahoo_url,
+      new_url: yahooUrl,
+      old_price: earphone.yahoo_price,
+      new_price: yahooPrice,
+      ratio: ratio != null ? Number(ratio.toFixed(4)) : "",
+      decision: "accept",
+      reason: acceptReason,
+      ...emptyRejectExtras(),
+      ...(pending.searchMeta ?? {}),
+      ...probeFieldsFromMatch({ priceProbe: pending.priceProbe }),
+    });
+
+    if (DRY_RUN) {
+      summary.updated.push({
+        name: `${earphone.brand} ${earphone.name}`,
+        yahooUrl,
+        yahooPrice,
+        shopPrice: earphone.price,
+        itemName,
+        previousUrl: earphone.yahoo_url,
+        previousPrice: earphone.yahoo_price,
+        ratio,
+        reason: acceptReason,
+      });
+    } else {
+      const { error: updateError } = await supabase
+        .from("earphones")
+        .update({
+          yahoo_url: yahooUrl,
+          yahoo_price: yahooPrice,
+          yahoo_updated_at: new Date().toISOString(),
+        })
+        .eq("id", earphone.id);
+
+      if (updateError) {
+        summary.failed.push({
+          name: `${earphone.brand} ${earphone.name}`,
+          reason: updateError.message,
+        });
+      } else {
+        summary.updated.push({
+          name: `${earphone.brand} ${earphone.name}`,
+          yahooUrl,
+          yahooPrice,
+          shopPrice: earphone.price,
+        });
+      }
+    }
+  }
+
+  const reportSummary = summarizeReport(reportRows);
+
   console.log("=== 更新結果 ===");
   console.log(
     `Yahoo!リンク更新${DRY_RUN ? "対象" : ""}: ${summary.updated.length}件`,
   );
-  console.log(`スキップ(未マッチ): ${summary.skipped.length}件`);
+  console.log(`hold(variant_suspect等・DB未更新): ${summary.held.length}件`);
+  console.log(`スキップ(未マッチ/却下): ${summary.skipped.length}件`);
   console.log(`失敗: ${summary.failed.length}件`);
+  if (clearInvalid) {
+    console.log(`clear-invalid 対象: ${summary.cleared.length}件`);
+  }
+
+  console.log("\n--- レポート件数サマリ ---");
+  console.log(`accept: ${reportSummary.accept}`);
+  console.log(`hold: ${reportSummary.hold}`);
+  console.log(`reject: ${reportSummary.reject}`);
+  for (const [reason, count] of Object.entries(reportSummary.byReason).sort()) {
+    console.log(`  ${reason}: ${count}`);
+  }
+
+  if (staleSuspects.length > 0) {
+    console.log(`\n--- stale_suspect: ${staleSuspects.length}件 ---`);
+    for (const s of staleSuspects) {
+      console.log(
+        `- ${s.brand} ${s.name}: price¥${s.price} / yahoo¥${s.yahoo_price}`,
+      );
+    }
+  }
+
+  if (priceStaleSuspects.length > 0) {
+    console.log(`\n--- price_stale_suspect: ${priceStaleSuspects.length}件 ---`);
+    for (const s of priceStaleSuspects) {
+      console.log(
+        `- ${s.brand} ${s.name}: price¥${s.price} / rakuten¥${s.rakuten_price} / yahoo¥${s.yahoo_price}`,
+      );
+    }
+  }
+
+  if (staleLinks.length > 0) {
+    console.log(`\n--- stale_link: ${staleLinks.length}件 ---`);
+    for (const s of staleLinks) {
+      console.log(
+        `- ${s.brand} ${s.name} [${s.store}]: updated_at=${s.updated_at}`,
+      );
+    }
+  }
+
+  const variantSuspectRows = reportRows.filter(
+    (r) =>
+      r.decision === "hold" &&
+      typeof r.reason === "string" &&
+      r.reason.startsWith("variant_suspect"),
+  );
+  if (variantSuspectRows.length > 0) {
+    console.log(`\n--- variant_suspect (hold): ${variantSuspectRows.length}件 ---`);
+    for (const r of variantSuspectRows) {
+      console.log(`- ${r.brand} ${r.name}: ${r.reason}`);
+    }
+  }
+
+  const noMatchRows = summary.skipped.filter((s) => s.reason === "no_match");
+  if (noMatchRows.length > 0) {
+    console.log(`\n--- no_match 上位タイトル: ${noMatchRows.length}件 ---`);
+    for (const s of noMatchRows) {
+      console.log(
+        `- ${s.name} (keyword_used="${s.keywordUsed ?? ""}" hit_count=${s.hitCount ?? 0})`,
+      );
+      if (s.keywordHitCounts) {
+        console.log(`    keyword_hit_counts: ${s.keywordHitCounts}`);
+      }
+      const titles = s.topTitles ?? [];
+      if (titles.length === 0) {
+        console.log("    (検索結果0件)");
+      } else {
+        for (const [i, t] of titles.entries()) {
+          console.log(`    [${i + 1}] ${t}`);
+        }
+      }
+    }
+  }
+
+  const excludeRows = summary.skipped.filter((s) =>
+    String(s.reason).startsWith("exclude_keyword"),
+  );
+  if (excludeRows.length > 0) {
+    console.log(`\n--- exclude_keyword 候補タイトル: ${excludeRows.length}件 ---`);
+    for (const s of excludeRows) {
+      console.log(`- ${s.name}: ${s.reason}`);
+      for (const t of s.excludeTitles ?? []) {
+        console.log(`    ${t}`);
+      }
+    }
+  }
 
   if (summary.updated.length > 0) {
     console.log("\n--- 更新一覧 ---");
     summary.updated.forEach((s) => {
       const ratio =
-        s.shopPrice != null && s.shopPrice > 0 && s.yahooPrice != null
-          ? (s.yahooPrice / s.shopPrice).toFixed(2)
-          : "?";
+        s.ratio != null
+          ? s.ratio.toFixed(2)
+          : s.shopPrice != null && s.shopPrice > 0 && s.yahooPrice != null
+            ? (s.yahooPrice / s.shopPrice).toFixed(2)
+            : "?";
       const priceInfo =
         s.shopPrice != null
           ? `Yahoo¥${s.yahooPrice} / ショップ¥${s.shopPrice} (${ratio}x)`
           : `Yahoo¥${s.yahooPrice}`;
-      console.log(`- ${s.name}: ${priceInfo}`);
+      const flag = s.reason ? ` [${s.reason}]` : "";
+      console.log(`- ${s.name}: ${priceInfo}${flag}`);
       if (s.itemName) console.log(`    ${s.itemName}`);
       console.log(`    ${s.yahooUrl}`);
       if (DRY_RUN && s.previousUrl != null && s.previousUrl !== s.yahooUrl) {
@@ -542,6 +881,18 @@ async function main() {
     console.log("\n--- 失敗一覧 ---");
     summary.failed.forEach((s) => console.log(`- ${s.name}: ${s.reason}`));
     process.exitCode = 1;
+  }
+
+  if (DRY_RUN) {
+    const csv = formatReportCsv(reportRows);
+    const outPath = resolveReportPath();
+    mkdirSync(dirname(outPath), { recursive: true });
+    writeFileSync(outPath, csv, "utf-8");
+    console.log(`\nCSVレポート: ${outPath}`);
+    console.log("--- CSV (stdout) ---");
+    process.stdout.write(csv);
+    tryWritePriceSuggestions(reportRows);
+    writeDryRunSummary(reportRows);
   }
 }
 
