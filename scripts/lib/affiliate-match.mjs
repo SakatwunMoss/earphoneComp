@@ -167,19 +167,56 @@ export function stripParentheticals(name) {
     .trim();
 }
 
+/** 英語ブランド → カタカナ表記（検索フォールバック用） */
+export const KATAKANA_BRAND_NAMES = {
+  Philips: "フィリップス",
+  Shure: "シュア",
+  Sony: "ソニー",
+  Sennheiser: "ゼンハイザー",
+  Apple: "アップル",
+  Jabra: "ジャブラ",
+  Anker: "アンカー",
+  Bose: "ボーズ",
+  JBL: "ジェービーエル",
+  Beats: "ビーツ",
+  Google: "グーグル",
+  radius: "ラディウス",
+  Final: "ファイナル",
+  OPPO: "オッポ",
+};
+
+export function katakanaBrandName(brand) {
+  if (brand == null || brand === "") return null;
+  if (KATAKANA_BRAND_NAMES[brand]) return KATAKANA_BRAND_NAMES[brand];
+  const found = Object.entries(KATAKANA_BRAND_NAMES).find(
+    ([k]) => k.toLowerCase() === String(brand).toLowerCase(),
+  );
+  return found ? found[1] : null;
+}
+
 /**
  * 検索キーワード候補を順に返す。
- * (a) ブランド+名前 (b) 名前のみ (c) 括弧除去名 (d) aliases["brand|name"]
+ * (a) ブランド+名前 (b) 名前のみ (c) 括弧除去名
+ * (d) カタカナブランド+名前 / カタカナ+括弧除去名
+ * (e) aliases["brand|name"]
  */
 export function buildSearchKeywordList(brand, name, aliases = {}) {
   const key = `${brand}|${name}`;
   const aliasList = Array.isArray(aliases[key]) ? aliases[key] : [];
+  const stripped = stripParentheticals(name);
+  const kana = katakanaBrandName(brand);
   const candidates = [
     buildSearchKeyword(brand, name),
     String(name ?? "").trim(),
-    stripParentheticals(name),
-    ...aliasList.map((a) => String(a ?? "").trim()),
+    stripped,
   ];
+  if (kana) {
+    candidates.push(buildSearchKeyword(kana, name));
+    if (stripped && stripped !== String(name ?? "").trim()) {
+      candidates.push(buildSearchKeyword(kana, stripped));
+    }
+  }
+  candidates.push(...aliasList.map((a) => String(a ?? "").trim()));
   const seen = new Set();
   const out = [];
   for (const kw of candidates) {
@@ -190,8 +227,20 @@ export function buildSearchKeywordList(brand, name, aliases = {}) {
   return out;
 }
 
+function describeSearchError(err) {
+  const status = err?.status ?? err?.httpStatus ?? null;
+  const body = err?.body ?? err?.responseBody ?? null;
+  const message = err?.message ?? String(err);
+  return {
+    error: message,
+    status: status != null ? Number(status) : null,
+    body: body != null ? String(body).slice(0, 500) : null,
+  };
+}
+
 /**
  * 0件のとき次キーワードへ。最初にヒットしたキーワードで打ち切る。
+ * API エラー時は本文・ステータスを記録し、1回だけ間隔を空けて再試行する。
  * @param {(keyword: string) => Promise<any[]>} searchFn
  * @param {string[]} keywords
  * @param {{ sleep?: (ms: number) => Promise<void>, intervalMs?: number }} [opts]
@@ -201,7 +250,7 @@ export async function searchWithKeywordFallback(
   keywords,
   { sleep = null, intervalMs = 0 } = {},
 ) {
-  /** @type {Array<{ keyword: string, hitCount: number, error?: string }>} */
+  /** @type {Array<{ keyword: string, hitCount: number, error?: string, status?: number|null, body?: string|null }>} */
   const attempts = [];
   let items = [];
   let keywordUsed = keywords[0] ?? "";
@@ -212,19 +261,37 @@ export async function searchWithKeywordFallback(
     if (i > 0 && sleep && intervalMs > 0) {
       await sleep(intervalMs);
     }
-    try {
-      items = (await searchFn(keyword)) ?? [];
-    } catch (err) {
+
+    let lastErr = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      if (attempt > 0 && sleep && intervalMs > 0) {
+        await sleep(intervalMs);
+      }
+      try {
+        items = (await searchFn(keyword)) ?? [];
+        lastErr = null;
+        break;
+      } catch (err) {
+        lastErr = err;
+        items = [];
+      }
+    }
+
+    if (lastErr) {
+      const info = describeSearchError(lastErr);
       attempts.push({
         keyword,
         hitCount: 0,
-        error: err?.message ?? String(err),
+        error: info.error,
+        status: info.status,
+        body: info.body,
       });
       keywordUsed = keyword;
       hitCount = 0;
       items = [];
       continue;
     }
+
     const count = items.length;
     attempts.push({ keyword, hitCount: count });
     keywordUsed = keyword;
@@ -237,11 +304,16 @@ export async function searchWithKeywordFallback(
 
 export function formatKeywordHitCounts(attempts) {
   return (attempts ?? [])
-    .map((a) =>
-      a.error
-        ? `${a.keyword}:error`
-        : `${a.keyword}:${a.hitCount}`,
-    )
+    .map((a) => {
+      if (a.error) {
+        const status =
+          a.status != null && Number.isFinite(Number(a.status))
+            ? `:HTTP${a.status}`
+            : "";
+        return `${a.keyword}:error${status}`;
+      }
+      return `${a.keyword}:${a.hitCount}`;
+    })
     .join(" | ");
 }
 
@@ -360,8 +432,33 @@ export function itemContainsBaseName(itemName, baseName) {
   return true;
 }
 
+/**
+ * 型番トークンが候補名に含まれるか。
+ * 通常一致に加え、「型番 + 末尾英字1〜3文字 + 任意で /数字」
+ * （例: TAT3508 ↔ TAT3508BK/97）も一致とする。
+ */
+export function itemContainsModelToken(itemName, token) {
+  if (itemContainsBaseName(itemName, token)) return true;
+
+  const normItem = normalize(itemName);
+  const normToken = normalize(token);
+  if (!normToken) return false;
+
+  // normalize 後は / が消えるので、色コードは「英字1〜3 + 任意の数字」
+  // 元文字列でも TAT3508BK/97 形式を許可
+  const raw = String(itemName ?? "").normalize("NFKC");
+  const rawToken = String(token ?? "").normalize("NFKC");
+  const rawEsc = rawToken.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const rawRe = new RegExp(`${rawEsc}[A-Za-z]{1,3}(?:\\/\\d+)?`, "i");
+  if (rawRe.test(raw)) return true;
+
+  const normEsc = normToken.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const normRe = new RegExp(`${normEsc}[a-z]{1,3}\\d*`, "i");
+  return normRe.test(normItem);
+}
+
 export function itemContainsModelTokens(itemName, tokens) {
-  return tokens.every((token) => itemContainsBaseName(itemName, token));
+  return tokens.every((token) => itemContainsModelToken(itemName, token));
 }
 
 // 裸の「ケース」は本体商品まで落とすため使わない
@@ -415,6 +512,61 @@ export function getPriceRatioBounds(price, config = getPriceGuardConfig()) {
   return { min: config.ratioMin, max: config.ratioMax };
 }
 
+/**
+ * API 検索用の価格帯（円・整数）。price が無いときは null。
+ * 通常 0.6〜1.6 倍、5000円未満は 0.7〜1.4 倍（後段の価格ガードと同じ）。
+ */
+export function getApiPriceRange(price, config = getPriceGuardConfig()) {
+  if (price == null || !(price > 0)) return null;
+  const { min, max } = getPriceRatioBounds(price, config);
+  const minPrice = Math.max(1, Math.floor(price * min));
+  const maxPrice = Math.max(minPrice + 1, Math.ceil(price * max));
+  return { minPrice, maxPrice };
+}
+
+/** 候補価格が本体価格のこの倍率未満ならアクセサリー疑い */
+export const ACCESSORY_PRICE_RATIO = 0.3;
+
+const ACCESSORY_ITEM_KEYWORDS = [
+  "ケース",
+  "カバー",
+  "バッテリー",
+  "充電器",
+  "イヤーピース",
+  "イヤーチップ",
+];
+
+/**
+ * 「対応」「適用」、または単独の「用」（未使用・使用・採用などは除外）。
+ */
+export function hasAccessoryPurposeKeyword(itemName) {
+  const name = String(itemName ?? "");
+  if (name.includes("対応") || name.includes("適用")) return true;
+  // 「用」は「未使用」「使用」「採用」「応用」「雇用」等の一部にしない
+  return /(?<![未使採応雇利活])用/.test(name);
+}
+
+/**
+ * 「用/対応/適用」とアクセサリー語が両方含まれる、または価格が極端に安い。
+ */
+export function isAccessorySuspect(itemName, itemPrice, catalogPrice) {
+  const name = String(itemName ?? "");
+  const hasPurpose = hasAccessoryPurposeKeyword(name);
+  const hasItem = ACCESSORY_ITEM_KEYWORDS.some((kw) => name.includes(kw));
+  if (hasPurpose && hasItem) return true;
+
+  if (
+    catalogPrice != null &&
+    catalogPrice > 0 &&
+    itemPrice != null &&
+    itemPrice > 0 &&
+    itemPrice < catalogPrice * ACCESSORY_PRICE_RATIO
+  ) {
+    return true;
+  }
+  return false;
+}
+
 export function isPriceInRange(itemPrice, currentPrice, config = getPriceGuardConfig()) {
   if (currentPrice == null || currentPrice <= 0 || itemPrice == null) {
     return { ok: true, ratio: null };
@@ -442,8 +594,19 @@ export function evaluateCandidate(earphone, item, ctx) {
   const normalizedItemName = normalize(itemName);
   const currentPrice = earphone.price;
 
-  if (!itemContainsBaseName(itemName, baseName)) {
+  if (
+    !itemContainsBaseName(itemName, baseName) &&
+    !itemContainsModelToken(itemName, baseName)
+  ) {
     return { ok: false, reason: "base_name_mismatch" };
+  }
+
+  // アクセサリー名パターン（用/対応/適用 × ケース等）は exclude より先に判定
+  const nameHasAccessoryItem = ACCESSORY_ITEM_KEYWORDS.some((kw) =>
+    itemName.includes(kw),
+  );
+  if (hasAccessoryPurposeKeyword(itemName) && nameHasAccessoryItem) {
+    return { ok: false, reason: "accessory_suspect" };
   }
 
   const hitKeyword = EXCLUDE_KEYWORDS.find((kw) => itemName.includes(kw));
@@ -488,6 +651,22 @@ export function evaluateCandidate(earphone, item, ctx) {
     ) {
       return { ok: false, reason: "brand_missing" };
     }
+  }
+
+  // 極端に安い候補は price_out_of_range ではなく accessory_suspect
+  // （price_suggestion 用 probe からも除外する）
+  if (
+    currentPrice != null &&
+    currentPrice > 0 &&
+    item.itemPrice != null &&
+    item.itemPrice > 0 &&
+    item.itemPrice < currentPrice * ACCESSORY_PRICE_RATIO
+  ) {
+    return {
+      ok: false,
+      reason: "accessory_suspect",
+      ratio: item.itemPrice / currentPrice,
+    };
   }
 
   const priceCheck = isPriceInRange(item.itemPrice, currentPrice, config);
@@ -777,6 +956,7 @@ function pickDominantReason(reasons) {
   if (reasons.length === 0) return null;
   // ベース名一致まで進んだ候補の理由を優先して報告
   const priority = [
+    "accessory_suspect",
     "price_out_of_range",
     "longer_name_preferred",
     "model_token_mismatch",
@@ -866,12 +1046,16 @@ export const REPORT_COLUMNS = [
   "new_url",
   "old_price",
   "new_price",
+  "old_image_url",
+  "new_image_url",
   "ratio",
   "decision",
   "reason",
   "keyword_used",
   "hit_count",
   "keyword_hit_counts",
+  "price_min",
+  "price_max",
   "rejected_title",
   "rejected_price",
   "rejected_ratio",
@@ -882,6 +1066,58 @@ export const REPORT_COLUMNS = [
   "probe_price",
   "probe_url",
 ];
+
+/** image_url が未設定（NULL / 空文字）かどうか */
+export function isBlankImageUrl(url) {
+  return url == null || String(url).trim() === "";
+}
+
+/**
+ * 楽天商品検索APIの mediumImageUrls 先頭を取り出す。
+ * formatVersion により string[] または { imageUrl }[] があり得る。
+ * @param {any} item
+ * @returns {string|null}
+ */
+export function pickRakutenImageUrl(item) {
+  const urls = item?.mediumImageUrls;
+  if (!Array.isArray(urls) || urls.length === 0) return null;
+  const first = urls[0];
+  if (typeof first === "string") {
+    const s = first.trim();
+    return s || null;
+  }
+  if (first && typeof first.imageUrl === "string") {
+    const s = first.imageUrl.trim();
+    return s || null;
+  }
+  return null;
+}
+
+/**
+ * Yahoo!ショッピング itemSearch の image.medium を取り出す。
+ * @param {any} hit
+ * @returns {string|null}
+ */
+export function pickYahooImageUrl(hit) {
+  const medium = hit?.image?.medium;
+  if (typeof medium === "string") {
+    const s = medium.trim();
+    return s || null;
+  }
+  return null;
+}
+
+/**
+ * 既存 image_url が空のときだけ候補 URL を返す（上書きしない）。
+ * @param {string|null|undefined} currentImageUrl
+ * @param {string|null|undefined} candidateImageUrl
+ * @returns {string|null}
+ */
+export function resolveImageUrlUpdate(currentImageUrl, candidateImageUrl) {
+  if (!isBlankImageUrl(currentImageUrl)) return null;
+  if (isBlankImageUrl(candidateImageUrl)) return null;
+  return String(candidateImageUrl).trim();
+}
 
 export const PRICE_SUGGESTION_COLUMNS = [
   "id",
@@ -1123,6 +1359,8 @@ export function emptyRejectExtras() {
     keyword_used: "",
     hit_count: "",
     keyword_hit_counts: "",
+    price_min: "",
+    price_max: "",
     rejected_title: "",
     rejected_price: "",
     rejected_ratio: "",
@@ -1135,11 +1373,18 @@ export function emptyRejectExtras() {
   };
 }
 
-export function searchMetaFields({ keywordUsed, hitCount, attempts }) {
+export function searchMetaFields({
+  keywordUsed,
+  hitCount,
+  attempts,
+  priceRange = null,
+}) {
   return {
     keyword_used: keywordUsed ?? "",
     hit_count: hitCount ?? "",
     keyword_hit_counts: formatKeywordHitCounts(attempts),
+    price_min: priceRange?.minPrice ?? "",
+    price_max: priceRange?.maxPrice ?? "",
   };
 }
 

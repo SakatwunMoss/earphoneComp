@@ -1,9 +1,7 @@
 name: Sync Yahoo Shopping affiliate links (earphones)
 
 on:
-  schedule:
-    # 毎日 04:00 JST (UTC 19:00 の前日分)。楽天同期(03:00 JST)の1時間後
-    - cron: '0 19 * * *'
+  # schedule は sync-affiliate-links.yml に統合。手動実行のみ残す
   workflow_dispatch:
     inputs:
       dry_run:

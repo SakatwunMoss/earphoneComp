@@ -5,7 +5,7 @@
  */
 
 export type SceneId = "commute" | "sport" | "wfh" | "game";
-export type PriorityId = "sound" | "battery" | "fit" | "call";
+export type PriorityId = "sound" | "battery" | "fit" | "value" | "call";
 
 export const SCENE_KEYWORDS: Record<SceneId, readonly string[]> = {
   commute: [
@@ -91,9 +91,11 @@ export const PRIORITY_KEYWORDS: Record<PriorityId, readonly string[]> = {
     "密閉",
     "イヤー",
   ],
+  value: ["コスパ", "手頃", "入門", "エントリー"],
   call: [
     "通話",
     "マイク",
+    "ハンズフリー",
     "会議",
     "ビジネス",
     "通話品質",
@@ -115,5 +117,6 @@ export const PRIORITY_LABELS: Record<PriorityId, string> = {
   sound: diagnoseCopy.quiz.options.priorities.sound.ja,
   battery: diagnoseCopy.quiz.options.priorities.battery.ja,
   fit: diagnoseCopy.quiz.options.priorities.fit.ja,
+  value: diagnoseCopy.quiz.options.priorities.value.ja,
   call: diagnoseCopy.quiz.options.priorities.call.ja,
 };

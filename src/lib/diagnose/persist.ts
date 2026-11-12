@@ -1,35 +1,46 @@
 import type {
   BudgetPreference,
-  FormPreference,
+  ConnectionPreference,
   NcPreference,
   WaterPreference,
 } from "@/lib/diagnose/scoreEarphones";
 import type { PriorityId, SceneId } from "@/lib/diagnose/tagKeywords";
 
-export const DIAGNOSE_STORAGE_KEY = "earphone-diagnose-state:v1";
+export const DIAGNOSE_STORAGE_KEY = "earphone-diagnose-state:v3";
 export const DIAGNOSE_RETURNING_KEY = "earphone-diagnose-returning:v1";
-/** 読み取りは v1（selectedIds なし）も後方互換で受け付ける */
-export const DIAGNOSE_STATE_VERSION = 2;
+/** v3: 接続方式・予算4択・重視ポイント追加。旧 v1/v2 は無視する */
+export const DIAGNOSE_STATE_VERSION = 3;
 export const DIAGNOSE_STATE_TTL_MS = 24 * 60 * 60 * 1000;
 export const DIAGNOSE_RETURNING_TTL_MS = 30 * 60 * 1000;
 export const DIAGNOSE_MAX_COMPARE = 3;
 
 const SCENE_IDS = new Set<SceneId>(["commute", "sport", "wfh", "game"]);
 const NC_IDS = new Set<NcPreference>(["required", "preferred", "none"]);
-const FORM_IDS = new Set<FormPreference>(["tws", "any"]);
+const CONNECTION_IDS = new Set<ConnectionPreference>([
+  "wired",
+  "wireless",
+  "any",
+]);
 const BUDGET_IDS = new Set<BudgetPreference>([
+  "under_4000",
   "under_10000",
   "under_30000",
   "no_limit",
 ]);
-const PRIORITY_IDS = new Set<PriorityId>(["sound", "battery", "fit", "call"]);
+const PRIORITY_IDS = new Set<PriorityId>([
+  "sound",
+  "battery",
+  "fit",
+  "value",
+  "call",
+]);
 const WATER_IDS = new Set<WaterPreference>(["needed", "not_needed"]);
-const ACCEPTED_STATE_VERSIONS = new Set([1, 2]);
+const ACCEPTED_STATE_VERSIONS = new Set([3]);
 
 export type PersistedDraft = {
   scene: SceneId | null;
   nc: NcPreference | null;
-  form: FormPreference | null;
+  connection: ConnectionPreference | null;
   budget: BudgetPreference | null;
   priorities: PriorityId[];
   water: WaterPreference | null;
@@ -41,7 +52,7 @@ export type PersistedDiagnoseState = {
   stepIndex: number;
   finished: boolean;
   savedAt: number;
-  /** 比較チェック中の機種 ID（v1 保存には無い場合あり） */
+  /** 比較チェック中の機種 ID */
   selectedIds: string[];
 };
 
@@ -56,7 +67,7 @@ export function createInitialDraft(): PersistedDraft {
   return {
     scene: null,
     nc: null,
-    form: null,
+    connection: null,
     budget: null,
     priorities: [],
     water: null,
@@ -120,6 +131,8 @@ export function loadDiagnoseState(
 export function clearDiagnoseState(): void {
   try {
     sessionStorage.removeItem(DIAGNOSE_STORAGE_KEY);
+    // 旧キーも掃除（形式変更で読み捨て対象）
+    sessionStorage.removeItem("earphone-diagnose-state:v1");
     sessionStorage.removeItem(DIAGNOSE_RETURNING_KEY);
   } catch {
     // ignore
@@ -329,7 +342,6 @@ function isValidPersistedState(
   if (v.finished && !isDraftComplete(v.draft)) {
     return false;
   }
-  // selectedIds は未定義（v1）でも可。配列なら要素が string であることだけ見る
   if (v.selectedIds !== undefined) {
     if (!Array.isArray(v.selectedIds)) {
       return false;
@@ -352,7 +364,12 @@ function isValidDraft(value: unknown): value is PersistedDraft {
   if (!(d.nc === null || NC_IDS.has(d.nc as NcPreference))) {
     return false;
   }
-  if (!(d.form === null || FORM_IDS.has(d.form as FormPreference))) {
+  if (
+    !(
+      d.connection === null ||
+      CONNECTION_IDS.has(d.connection as ConnectionPreference)
+    )
+  ) {
     return false;
   }
   if (!(d.budget === null || BUDGET_IDS.has(d.budget as BudgetPreference))) {
@@ -378,7 +395,7 @@ function isDraftComplete(draft: PersistedDraft): boolean {
   return (
     draft.scene != null &&
     draft.nc != null &&
-    draft.form != null &&
+    draft.connection != null &&
     draft.budget != null &&
     draft.water != null
   );

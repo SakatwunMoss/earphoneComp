@@ -33,7 +33,7 @@ import {
 import {
   recommendEarphones,
   type BudgetPreference,
-  type FormPreference,
+  type ConnectionPreference,
   type NcPreference,
   type QuizAnswers,
   type WaterPreference,
@@ -44,7 +44,7 @@ import type { Earphone } from "@/types/database";
 const STEPS = [
   "scene",
   "nc",
-  "form",
+  "connection",
   "budget",
   "priorities",
   "water",
@@ -424,7 +424,7 @@ function toQuizAnswers(draft: DraftAnswers): QuizAnswers | null {
   if (
     draft.scene == null ||
     draft.nc == null ||
-    draft.form == null ||
+    draft.connection == null ||
     draft.budget == null ||
     draft.water == null
   ) {
@@ -433,7 +433,7 @@ function toQuizAnswers(draft: DraftAnswers): QuizAnswers | null {
   return {
     scene: draft.scene,
     nc: draft.nc,
-    form: draft.form,
+    connection: draft.connection,
     budget: draft.budget,
     priorities: draft.priorities,
     water: draft.water,
@@ -446,8 +446,8 @@ function isStepComplete(step: StepId, draft: DraftAnswers): boolean {
       return draft.scene != null;
     case "nc":
       return draft.nc != null;
-    case "form":
-      return draft.form != null;
+    case "connection":
+      return draft.connection != null;
     case "budget":
       return draft.budget != null;
     case "priorities":
@@ -491,15 +491,18 @@ function StepContent({
           onChange={(nc) => setDraft((d) => ({ ...d, nc }))}
         />
       );
-    case "form":
+    case "connection":
       return (
         <ChoiceStep
-          title={questions.form}
+          title={questions.connection}
           options={(
-            Object.entries(options.form) as [FormPreference, BilingualCopy][]
+            Object.entries(options.connection) as [
+              ConnectionPreference,
+              BilingualCopy,
+            ][]
           ).map(([id, label]) => ({ id, label }))}
-          value={draft.form}
-          onChange={(form) => setDraft((d) => ({ ...d, form }))}
+          value={draft.connection}
+          onChange={(connection) => setDraft((d) => ({ ...d, connection }))}
         />
       );
     case "budget":

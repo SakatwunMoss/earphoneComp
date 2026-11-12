@@ -1,5 +1,7 @@
 // earphonesテーブルの各機種をYahoo!ショッピングで検索し、見つかった商品のアフィリエイトリンクを
 // yahoo_url / yahoo_price / yahoo_updated_at に保存するバッチスクリプト。
+// accept かつ image_url が空のときのみ、API の image.medium を image_url にセットする
+// （既存 image_url は上書きしない）。
 // url / price 列（公式または現状掲載中ショップ）には一切書き込まない。
 //
 // 実行方法:
@@ -37,15 +39,18 @@ import {
   formatDryRunSummaryMarkdown,
   formatPriceSuggestionSql,
   formatReportCsv,
+  getApiPriceRange,
   getPriceGuardConfig,
   isPriceStaleSuspect,
   isStaleLink,
   isStaleSuspect,
   parseCliFlags,
   parseSimpleCsv,
+  pickYahooImageUrl,
   PRICE_SUGGESTION_COLUMNS,
   probeFieldsFromMatch,
   rejectExtrasFromMatch,
+  resolveImageUrlUpdate,
   searchMetaFields,
   searchWithKeywordFallback,
   summarizeReport,
@@ -255,27 +260,32 @@ function logYahooApiError({ status, bodyText, keyword, requestUrl }) {
   }
 }
 
-function buildYahooSearchUrl(keyword) {
-  return (
-    `${YAHOO_ENDPOINT}?` +
-    [
-      `appid=${encodeURIComponent(YAHOO_APP_ID)}`,
-      "affiliate_type=vc",
-      `affiliate_id=${VC_AFFILIATE_ID}`,
-      `query=${encodeURIComponent(keyword)}`,
-      "results=30",
-      "sort=-review_count",
-      "condition=new",
-    ].join("&")
-  );
+function buildYahooSearchUrl(keyword, priceRange = null) {
+  const params = [
+    `appid=${encodeURIComponent(YAHOO_APP_ID)}`,
+    "affiliate_type=vc",
+    `affiliate_id=${VC_AFFILIATE_ID}`,
+    `query=${encodeURIComponent(keyword)}`,
+    "results=30",
+    "sort=-review_count",
+    "condition=new",
+  ];
+  if (priceRange) {
+    params.push(`price_from=${priceRange.minPrice}`);
+    params.push(`price_to=${priceRange.maxPrice}`);
+  }
+  return `${YAHOO_ENDPOINT}?` + params.join("&");
 }
 
-async function searchYahoo(keyword) {
-  const url = buildYahooSearchUrl(keyword);
+async function searchYahoo(keyword, priceRange = null) {
+  const url = buildYahooSearchUrl(keyword, priceRange);
 
   if (DEBUG) {
     console.log(
-      `[DEBUG] Yahoo itemSearch: keyword="${keyword}", appid=${maskSecret(YAHOO_APP_ID)}`,
+      `[DEBUG] Yahoo itemSearch: keyword="${keyword}", appid=${maskSecret(YAHOO_APP_ID)}` +
+        (priceRange
+          ? `, price=${priceRange.minPrice}-${priceRange.maxPrice}`
+          : ""),
     );
   }
 
@@ -289,7 +299,12 @@ async function searchYahoo(keyword) {
       keyword,
       requestUrl: url,
     });
-    throw new Error(`Yahoo Shopping API error: ${res.status} ${bodyText}`);
+    const err = new Error(
+      `Yahoo Shopping API error: ${res.status} ${bodyText}`,
+    );
+    err.status = res.status;
+    err.body = bodyText;
+    throw err;
   }
 
   const data = parseYahooErrorBody(bodyText) ?? {};
@@ -408,7 +423,7 @@ async function main() {
   const { data: earphones, error } = await supabase
     .from("earphones")
     .select(
-      "id, name, brand, price, url, yahoo_url, yahoo_price, yahoo_updated_at, rakuten_url, rakuten_price, rakuten_updated_at",
+      "id, name, brand, price, url, image_url, yahoo_url, yahoo_price, yahoo_updated_at, rakuten_url, rakuten_price, rakuten_updated_at",
     )
     .order("brand")
     .order("name");
@@ -491,20 +506,26 @@ async function main() {
       earphone.name,
       searchAliases,
     );
+    const priceRange = getApiPriceRange(earphone.price, priceConfig);
     try {
       const {
         items: hits,
         keywordUsed,
         hitCount,
         attempts,
-      } = await searchWithKeywordFallback(searchYahoo, keywords, {
-        sleep,
-        intervalMs: REQUEST_INTERVAL_MS,
-      });
+      } = await searchWithKeywordFallback(
+        (kw) => searchYahoo(kw, priceRange),
+        keywords,
+        {
+          sleep,
+          intervalMs: REQUEST_INTERVAL_MS,
+        },
+      );
       const searchMeta = searchMetaFields({
         keywordUsed,
         hitCount,
         attempts,
+        priceRange,
       });
       const result = findBestMatch(earphone, hits, matchOptions);
 
@@ -522,6 +543,8 @@ async function main() {
           new_url: yahooUrl,
           old_price: earphone.yahoo_price,
           new_price: yahooPrice,
+          old_image_url: earphone.image_url ?? "",
+          new_image_url: "",
           ratio: result.ratio != null ? Number(result.ratio.toFixed(4)) : "",
           decision: "hold",
           reason: result.reason,
@@ -551,6 +574,8 @@ async function main() {
           new_url: "",
           old_price: earphone.yahoo_price,
           new_price: "",
+          old_image_url: earphone.image_url ?? "",
+          new_image_url: "",
           ratio: "",
           decision: "reject",
           reason: result.reason,
@@ -601,6 +626,11 @@ async function main() {
       const match = result.match;
       const yahooUrl = match.url;
       const yahooPrice = match.price ?? null;
+      const candidateImageUrl = pickYahooImageUrl(match);
+      const imageUrlUpdate = resolveImageUrlUpdate(
+        earphone.image_url,
+        candidateImageUrl,
+      );
 
       if (!isValidAffiliateUrl(yahooUrl)) {
         reportRows.push({
@@ -613,6 +643,8 @@ async function main() {
           new_url: yahooUrl ?? "",
           old_price: earphone.yahoo_price,
           new_price: yahooPrice,
+          old_image_url: earphone.image_url ?? "",
+          new_image_url: "",
           ratio: result.ratio != null ? Number(result.ratio.toFixed(4)) : "",
           decision: "reject",
           reason: "invalid_affiliate_url",
@@ -632,6 +664,7 @@ async function main() {
         earphone,
         yahooUrl,
         yahooPrice,
+        imageUrlUpdate,
         itemName: match.name,
         ratio: result.ratio,
         reason: result.reason,
@@ -649,6 +682,8 @@ async function main() {
         new_url: "",
         old_price: earphone.yahoo_price,
         new_price: "",
+        old_image_url: earphone.image_url ?? "",
+        new_image_url: "",
         ratio: "",
         decision: "reject",
         reason: `error:${err.message}`,
@@ -672,7 +707,14 @@ async function main() {
   );
 
   for (const pending of pendingAccepts) {
-    const { earphone, yahooUrl, yahooPrice, itemName, ratio } = pending;
+    const {
+      earphone,
+      yahooUrl,
+      yahooPrice,
+      imageUrlUpdate,
+      itemName,
+      ratio,
+    } = pending;
 
     if (dupIds.has(earphone.id)) {
       reportRows.push({
@@ -685,6 +727,8 @@ async function main() {
         new_url: yahooUrl,
         old_price: earphone.yahoo_price,
         new_price: yahooPrice,
+        old_image_url: earphone.image_url ?? "",
+        new_image_url: "",
         ratio: ratio != null ? Number(ratio.toFixed(4)) : "",
         decision: "reject",
         reason: "duplicate_url",
@@ -709,6 +753,8 @@ async function main() {
       new_url: yahooUrl,
       old_price: earphone.yahoo_price,
       new_price: yahooPrice,
+      old_image_url: earphone.image_url ?? "",
+      new_image_url: imageUrlUpdate ?? "",
       ratio: ratio != null ? Number(ratio.toFixed(4)) : "",
       decision: "accept",
       reason: acceptReason,
@@ -726,17 +772,22 @@ async function main() {
         itemName,
         previousUrl: earphone.yahoo_url,
         previousPrice: earphone.yahoo_price,
+        imageUrlUpdate: imageUrlUpdate ?? null,
         ratio,
         reason: acceptReason,
       });
     } else {
+      const updatePayload = {
+        yahoo_url: yahooUrl,
+        yahoo_price: yahooPrice,
+        yahoo_updated_at: new Date().toISOString(),
+      };
+      if (imageUrlUpdate) {
+        updatePayload.image_url = imageUrlUpdate;
+      }
       const { error: updateError } = await supabase
         .from("earphones")
-        .update({
-          yahoo_url: yahooUrl,
-          yahoo_price: yahooPrice,
-          yahoo_updated_at: new Date().toISOString(),
-        })
+        .update(updatePayload)
         .eq("id", earphone.id);
 
       if (updateError) {
@@ -750,6 +801,7 @@ async function main() {
           yahooUrl,
           yahooPrice,
           shopPrice: earphone.price,
+          imageUrlUpdate: imageUrlUpdate ?? null,
         });
       }
     }
@@ -867,11 +919,26 @@ async function main() {
       console.log(`- ${s.name}: ${priceInfo}${flag}`);
       if (s.itemName) console.log(`    ${s.itemName}`);
       console.log(`    ${s.yahooUrl}`);
+      if (s.imageUrlUpdate) {
+        console.log(`    [image_url 新規] ${s.imageUrlUpdate}`);
+      }
       if (DRY_RUN && s.previousUrl != null && s.previousUrl !== s.yahooUrl) {
         console.log(`    [差分] 旧URL: ${s.previousUrl}`);
         console.log(`    [差分] 旧価格: ¥${s.previousPrice}`);
       }
     });
+  }
+
+  const imageCandidates = reportRows.filter(
+    (r) => r.decision === "accept" && r.new_image_url,
+  );
+  if (imageCandidates.length > 0) {
+    console.log(
+      `\n--- image_url 新規セット候補: ${imageCandidates.length}件 ---`,
+    );
+    for (const r of imageCandidates) {
+      console.log(`- ${r.brand} ${r.name}: ${r.new_image_url}`);
+    }
   }
   if (summary.skipped.length > 0) {
     console.log("\n--- スキップ一覧 ---");

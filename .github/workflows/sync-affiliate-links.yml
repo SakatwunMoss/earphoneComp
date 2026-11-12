@@ -1,0 +1,91 @@
+name: Sync affiliate links (earphones)
+
+on:
+  schedule:
+    - cron: '0 18 * * *'  # 03:00 JST
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'true にすると実際の更新はせず結果だけログ出力'
+        required: false
+        default: 'false'
+
+concurrency:
+  group: sync-affiliate-links
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          check-latest: true
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Sync Rakuten links
+        id: sync-rakuten
+        continue-on-error: true
+        run: node scripts/sync-rakuten-links.mjs
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          RAKUTEN_APP_ID: ${{ secrets.RAKUTEN_APP_ID }}
+          RAKUTEN_ACCESS_KEY: ${{ secrets.RAKUTEN_ACCESS_KEY }}
+          RAKUTEN_AFFILIATE_ID: ${{ secrets.RAKUTEN_AFFILIATE_ID }}
+          RAKUTEN_ORIGIN: ${{ secrets.RAKUTEN_ORIGIN }}
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+
+      - name: Sync Yahoo links
+        id: sync-yahoo
+        continue-on-error: true
+        run: node scripts/sync-yahoo-links.mjs
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          YAHOO_APP_ID: ${{ secrets.YAHOO_APP_ID }}
+          YAHOO_CLIENT_ID: ${{ secrets.YAHOO_CLIENT_ID }}
+          VC_SID: ${{ secrets.VC_SID }}
+          VC_PID: ${{ secrets.VC_PID }}
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+
+      - name: Export earphones JSON
+        if: ${{ (github.event.inputs.dry_run || 'false') != 'true' && (steps.sync-rakuten.outcome == 'success' || steps.sync-yahoo.outcome == 'success') }}
+        run: node scripts/export-earphones-json.mjs
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
+      - name: Commit and push earphones.json
+        if: ${{ (github.event.inputs.dry_run || 'false') != 'true' && (steps.sync-rakuten.outcome == 'success' || steps.sync-yahoo.outcome == 'success') }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/data/earphones.json
+          if git diff --staged --quiet; then
+            echo "No changes in earphones.json"
+            exit 0
+          fi
+          git commit -m "$(cat <<'EOF'
+          chore(data): refresh earphones.json after affiliate sync
+
+          EOF
+          )"
+          git push
+
+      - name: Fail job if any sync failed
+        if: ${{ always() && (steps.sync-rakuten.outcome == 'failure' || steps.sync-yahoo.outcome == 'failure') }}
+        run: |
+          echo "一部の同期が失敗: rakuten=${{ steps.sync-rakuten.outcome }} yahoo=${{ steps.sync-yahoo.outcome }}"
+          exit 1

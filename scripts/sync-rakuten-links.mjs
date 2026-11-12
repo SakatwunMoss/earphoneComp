@@ -1,5 +1,7 @@
 // earphonesテーブルの各機種を楽天市場で検索し、見つかった商品のアフィリエイトリンクを
 // rakuten_url / rakuten_price / rakuten_updated_at に保存するバッチスクリプト。
+// accept かつ image_url が空のときのみ、API の mediumImageUrls 先頭を image_url にセットする
+// （既存 image_url は上書きしない）。
 // url / price 列（公式または現状掲載中ショップ）には一切書き込まない。
 //
 // 実行方法:
@@ -34,15 +36,18 @@ import {
   formatDryRunSummaryMarkdown,
   formatPriceSuggestionSql,
   formatReportCsv,
+  getApiPriceRange,
   getPriceGuardConfig,
   isPriceStaleSuspect,
   isStaleLink,
   isStaleSuspect,
   parseCliFlags,
   parseSimpleCsv,
+  pickRakutenImageUrl,
   PRICE_SUGGESTION_COLUMNS,
   probeFieldsFromMatch,
   rejectExtrasFromMatch,
+  resolveImageUrlUpdate,
   searchMetaFields,
   searchWithKeywordFallback,
   summarizeReport,
@@ -112,7 +117,7 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function searchRakuten(keyword) {
+async function searchRakuten(keyword, priceRange = null) {
   const url = new URL(RAKUTEN_ENDPOINT);
   url.searchParams.set("applicationId", RAKUTEN_APP_ID);
   url.searchParams.set("accessKey", RAKUTEN_ACCESS_KEY);
@@ -121,6 +126,10 @@ async function searchRakuten(keyword) {
   url.searchParams.set("hits", "30");
   url.searchParams.set("sort", "-reviewCount");
   url.searchParams.set("formatVersion", "2");
+  if (priceRange) {
+    url.searchParams.set("minPrice", String(priceRange.minPrice));
+    url.searchParams.set("maxPrice", String(priceRange.maxPrice));
+  }
 
   const headers = {};
   if (RAKUTEN_ORIGIN) {
@@ -129,10 +138,25 @@ async function searchRakuten(keyword) {
   }
 
   const res = await fetch(url, { headers });
+  const bodyText = await res.text();
   if (!res.ok) {
-    throw new Error(`Rakuten API error: ${res.status} ${await res.text()}`);
+    console.error(
+      `[Rakuten API エラー] HTTP ${res.status} keyword="${keyword}" body=${bodyText.slice(0, 500)}`,
+    );
+    const err = new Error(`Rakuten API error: ${res.status} ${bodyText}`);
+    err.status = res.status;
+    err.body = bodyText;
+    throw err;
   }
-  const data = await res.json();
+  let data;
+  try {
+    data = JSON.parse(bodyText);
+  } catch {
+    const err = new Error(`Rakuten API invalid JSON: ${bodyText.slice(0, 200)}`);
+    err.status = res.status;
+    err.body = bodyText;
+    throw err;
+  }
   return data.Items ?? [];
 }
 
@@ -238,7 +262,7 @@ async function main() {
   const { data: earphones, error } = await supabase
     .from("earphones")
     .select(
-      "id, name, brand, price, url, rakuten_url, rakuten_price, rakuten_updated_at, yahoo_url, yahoo_price, yahoo_updated_at",
+      "id, name, brand, price, url, image_url, rakuten_url, rakuten_price, rakuten_updated_at, yahoo_url, yahoo_price, yahoo_updated_at",
     )
     .order("brand")
     .order("name");
@@ -316,20 +340,26 @@ async function main() {
       earphone.name,
       searchAliases,
     );
+    const priceRange = getApiPriceRange(earphone.price, priceConfig);
     try {
       const {
         items,
         keywordUsed,
         hitCount,
         attempts,
-      } = await searchWithKeywordFallback(searchRakuten, keywords, {
-        sleep,
-        intervalMs: REQUEST_INTERVAL_MS,
-      });
+      } = await searchWithKeywordFallback(
+        (kw) => searchRakuten(kw, priceRange),
+        keywords,
+        {
+          sleep,
+          intervalMs: REQUEST_INTERVAL_MS,
+        },
+      );
       const searchMeta = searchMetaFields({
         keywordUsed,
         hitCount,
         attempts,
+        priceRange,
       });
       const result = findBestMatch(earphone, items, matchOptions);
 
@@ -346,6 +376,8 @@ async function main() {
           new_url: rakutenUrl,
           old_price: earphone.rakuten_price,
           new_price: rakutenPrice,
+          old_image_url: earphone.image_url ?? "",
+          new_image_url: "",
           ratio: result.ratio != null ? Number(result.ratio.toFixed(4)) : "",
           decision: "hold",
           reason: result.reason,
@@ -375,6 +407,8 @@ async function main() {
           new_url: "",
           old_price: earphone.rakuten_price,
           new_price: "",
+          old_image_url: earphone.image_url ?? "",
+          new_image_url: "",
           ratio: "",
           decision: "reject",
           reason: result.reason,
@@ -426,11 +460,17 @@ async function main() {
       const match = result.match;
       const rakutenUrl = match.affiliateUrl || match.itemUrl;
       const rakutenPrice = match.itemPrice ?? null;
+      const candidateImageUrl = pickRakutenImageUrl(match);
+      const imageUrlUpdate = resolveImageUrlUpdate(
+        earphone.image_url,
+        candidateImageUrl,
+      );
 
       pendingAccepts.push({
         earphone,
         rakutenUrl,
         rakutenPrice,
+        imageUrlUpdate,
         itemName: match.itemName,
         ratio: result.ratio,
         reason: result.reason,
@@ -447,6 +487,8 @@ async function main() {
         new_url: "",
         old_price: earphone.rakuten_price,
         new_price: "",
+        old_image_url: earphone.image_url ?? "",
+        new_image_url: "",
         ratio: "",
         decision: "reject",
         reason: `error:${err.message}`,
@@ -471,7 +513,14 @@ async function main() {
   );
 
   for (const pending of pendingAccepts) {
-    const { earphone, rakutenUrl, rakutenPrice, itemName, ratio } = pending;
+    const {
+      earphone,
+      rakutenUrl,
+      rakutenPrice,
+      imageUrlUpdate,
+      itemName,
+      ratio,
+    } = pending;
 
     if (dupIds.has(earphone.id)) {
       reportRows.push({
@@ -483,6 +532,8 @@ async function main() {
         new_url: rakutenUrl,
         old_price: earphone.rakuten_price,
         new_price: rakutenPrice,
+        old_image_url: earphone.image_url ?? "",
+        new_image_url: "",
         ratio: ratio != null ? Number(ratio.toFixed(4)) : "",
         decision: "reject",
         reason: "duplicate_url",
@@ -507,6 +558,8 @@ async function main() {
       new_url: rakutenUrl,
       old_price: earphone.rakuten_price,
       new_price: rakutenPrice,
+      old_image_url: earphone.image_url ?? "",
+      new_image_url: imageUrlUpdate ?? "",
       ratio: ratio != null ? Number(ratio.toFixed(4)) : "",
       decision: "accept",
       reason: acceptReason,
@@ -525,17 +578,22 @@ async function main() {
         itemName,
         previousUrl: earphone.rakuten_url,
         previousPrice: earphone.rakuten_price,
+        imageUrlUpdate: imageUrlUpdate ?? null,
         ratio,
         reason: acceptReason,
       });
     } else {
+      const updatePayload = {
+        rakuten_url: rakutenUrl,
+        rakuten_price: rakutenPrice,
+        rakuten_updated_at: new Date().toISOString(),
+      };
+      if (imageUrlUpdate) {
+        updatePayload.image_url = imageUrlUpdate;
+      }
       const { error: updateError } = await supabase
         .from("earphones")
-        .update({
-          rakuten_url: rakutenUrl,
-          rakuten_price: rakutenPrice,
-          rakuten_updated_at: new Date().toISOString(),
-        })
+        .update(updatePayload)
         .eq("id", earphone.id);
 
       if (updateError) {
@@ -549,6 +607,7 @@ async function main() {
           rakutenUrl,
           rakutenPrice,
           shopPrice: earphone.price,
+          imageUrlUpdate: imageUrlUpdate ?? null,
         });
       }
     }
@@ -666,6 +725,9 @@ async function main() {
       console.log(`- ${s.name}: ${priceInfo}${flag}`);
       if (s.itemName) console.log(`    ${s.itemName}`);
       console.log(`    ${s.rakutenUrl}`);
+      if (s.imageUrlUpdate) {
+        console.log(`    [image_url 新規] ${s.imageUrlUpdate}`);
+      }
       if (
         DRY_RUN &&
         s.previousUrl != null &&
@@ -675,6 +737,18 @@ async function main() {
         console.log(`    [差分] 旧価格: ¥${s.previousPrice}`);
       }
     });
+  }
+
+  const imageCandidates = reportRows.filter(
+    (r) => r.decision === "accept" && r.new_image_url,
+  );
+  if (imageCandidates.length > 0) {
+    console.log(
+      `\n--- image_url 新規セット候補: ${imageCandidates.length}件 ---`,
+    );
+    for (const r of imageCandidates) {
+      console.log(`- ${r.brand} ${r.name}: ${r.new_image_url}`);
+    }
   }
   if (summary.skipped.length > 0) {
     console.log("\n--- スキップ一覧 ---");

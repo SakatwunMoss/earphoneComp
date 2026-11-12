@@ -1,9 +1,7 @@
 name: Sync Rakuten affiliate links (earphones)
 
 on:
-  schedule:
-    # 毎日 03:00 JST (UTC 18:00 の前日分)
-    - cron: '0 18 * * *'
+  # schedule は sync-affiliate-links.yml に統合。手動実行のみ残す
   workflow_dispatch:
     inputs:
       dry_run:

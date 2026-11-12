@@ -11,13 +11,19 @@ import {
   findDuplicateUrlIds,
   findUnregisteredVariantSuffix,
   formatDryRunSummaryMarkdown,
+  getApiPriceRange,
   getPriceRatioBounds,
   holdCandidateTitle,
+  isAccessorySuspect,
   isPriceInRange,
   isPriceStaleSuspect,
   isStaleLink,
   isStaleSuspect,
+  itemContainsModelToken,
   normalize,
+  pickRakutenImageUrl,
+  pickYahooImageUrl,
+  resolveImageUrlUpdate,
   searchWithKeywordFallback,
   stripParentheticals,
   urlPathSlug,
@@ -323,14 +329,14 @@ describe("variant_suspect / exclude_keyword / stale_link", () => {
       name: "Pixel Buds 2a",
       price: 23800,
     };
-    const coverTitle =
-      "Google Pixel Buds 2a 対応 シリコンカバー ケース";
+    // 用/対応/適用を含まない（accessory_suspect ではなく exclude_keyword 経路）
+    const coverTitle = "Google Pixel Buds 2a シリコンカバー";
     const result = findBestMatch(
       ep,
       [
         {
           itemName: coverTitle,
-          itemPrice: 1980,
+          itemPrice: 12000,
           itemBrand: "Google",
           reviewCount: 10,
           itemUrl: "https://example.com/cover",
@@ -564,14 +570,17 @@ describe("price suggestions", () => {
 });
 
 describe("search keyword fallback", () => {
-  it("builds brand+name, name-only, stripped, then aliases", () => {
+  it("builds brand+name, name-only, stripped, katakana, then aliases", () => {
     const list = buildSearchKeywordList("Google", "Pixel Buds Pro(初代)", {
-      "Google|Pixel Buds Pro(初代)": ["Pixel Buds Pro"],
+      "Google|Pixel Buds Pro(初代)": ["Pixel Buds Pro alias"],
     });
     assert.deepEqual(list, [
       "Google Pixel Buds Pro(初代)",
       "Pixel Buds Pro(初代)",
       "Pixel Buds Pro",
+      "グーグル Pixel Buds Pro(初代)",
+      "グーグル Pixel Buds Pro",
+      "Pixel Buds Pro alias",
     ]);
   });
 
@@ -593,6 +602,167 @@ describe("search keyword fallback", () => {
     assert.equal(result.keywordUsed, "TAT3508");
     assert.equal(result.hitCount, 1);
     assert.equal(result.attempts.length, 2);
+  });
+
+  it("retries once on API error then records error distinct from 0 hits", async () => {
+    let n = 0;
+    const sleeps = [];
+    const result = await searchWithKeywordFallback(
+      async (kw) => {
+        n++;
+        if (kw === "A") {
+          const err = new Error("boom");
+          err.status = 503;
+          err.body = '{"error":"busy"}';
+          throw err;
+        }
+        return [];
+      },
+      ["A", "B"],
+      {
+        sleep: async (ms) => {
+          sleeps.push(ms);
+        },
+        intervalMs: 10,
+      },
+    );
+    // A: try + retry, then B
+    assert.equal(n, 3);
+    assert.equal(result.attempts[0].error, "boom");
+    assert.equal(result.attempts[0].status, 503);
+    assert.equal(result.attempts[0].hitCount, 0);
+    assert.equal(result.attempts[1].hitCount, 0);
+    assert.equal(result.attempts[1].error, undefined);
+    assert.match(
+      result.attempts.map((a) =>
+        a.error ? `${a.keyword}:error:HTTP${a.status}` : `${a.keyword}:${a.hitCount}`,
+      ).join(" | "),
+      /A:error:HTTP503 \| B:0/,
+    );
+  });
+});
+
+describe("accessory_suspect + model color suffix", () => {
+  it("rejects Jabra Elite 5 accessory charging case as accessory_suspect", () => {
+    const elite5 = {
+      id: "e5",
+      brand: "Jabra",
+      name: "Elite 5",
+      price: 15000,
+    };
+    const elite4 = {
+      id: "e4",
+      brand: "Jabra",
+      name: "Elite 4",
+      price: 9450,
+    };
+    const title = "Jabra Elite 5 対応 USB充電ケース";
+    assert.equal(isAccessorySuspect(title, 3000, 15000), true);
+    const result = evaluateCandidate(
+      elite5,
+      { itemName: title, itemPrice: 3980, itemBrand: "Jabra" },
+      ctxFor([elite4, elite5]),
+    );
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, "accessory_suspect");
+  });
+
+  it("does not treat 未使用+ケース付き本体 as accessory_suspect by 用 alone", () => {
+    assert.equal(
+      isAccessorySuspect(
+        "【未使用】Apple AirPods 5 ワイヤレス充電ケース付きモデル",
+        25980,
+        30000,
+      ),
+      false,
+    );
+  });
+
+  it("matches TAT3508BK/97 candidate to TAT3508 model token", () => {
+    assert.equal(
+      itemContainsModelToken(
+        "Philips フィリップス TAT3508BK/97 ワイヤレスイヤホン",
+        "TAT3508",
+      ),
+      true,
+    );
+    const ep = {
+      id: "tat",
+      brand: "Philips",
+      name: "TAT3508",
+      price: 8000,
+    };
+    const result = evaluateCandidate(
+      ep,
+      {
+        itemName: "Philips TAT3508BK/97 完全ワイヤレスイヤホン",
+        itemPrice: 8500,
+        itemBrand: "Philips",
+      },
+      ctxFor([ep]),
+    );
+    assert.equal(result.ok, true, result.reason);
+  });
+
+  it("still prefers Elite 4 Active over Elite 4 for long titles", () => {
+    const shortEp = {
+      id: "e4",
+      brand: "Jabra",
+      name: "Elite 4",
+      price: 9450,
+    };
+    const longEp = {
+      id: "e4a",
+      brand: "Jabra",
+      name: "Elite 4 Active",
+      price: 12000,
+    };
+    const title = "Jabra Elite 4 Active 完全ワイヤレス";
+    const shortResult = evaluateCandidate(
+      shortEp,
+      { itemName: title, itemPrice: 12000, itemBrand: "Jabra" },
+      ctxFor([shortEp, longEp]),
+    );
+    assert.equal(shortResult.ok, false);
+    assert.equal(shortResult.reason, "longer_name_preferred");
+    const longResult = evaluateCandidate(
+      longEp,
+      { itemName: title, itemPrice: 12000, itemBrand: "Jabra" },
+      ctxFor([shortEp, longEp]),
+    );
+    assert.equal(longResult.ok, true);
+  });
+
+  it("marks very cheap candidates as accessory_suspect not price_out_of_range", () => {
+    const ep = {
+      id: "e5",
+      brand: "Jabra",
+      name: "Elite 5",
+      price: 15000,
+    };
+    const result = evaluateCandidate(
+      ep,
+      {
+        itemName: "Jabra Elite 5 ワイヤレスイヤホン本体",
+        itemPrice: 2000,
+        itemBrand: "Jabra",
+      },
+      ctxFor([ep]),
+    );
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, "accessory_suspect");
+  });
+
+  it("getApiPriceRange uses same ratios as price guard", () => {
+    assert.deepEqual(getApiPriceRange(10000), {
+      minPrice: 6000,
+      maxPrice: 16000,
+    });
+    assert.deepEqual(getApiPriceRange(2979), {
+      minPrice: Math.floor(2979 * 0.7),
+      maxPrice: Math.ceil(2979 * 1.4),
+    });
+    assert.equal(getApiPriceRange(null), null);
   });
 });
 
@@ -649,6 +819,58 @@ describe("dry-run summary helpers", () => {
     assert.match(md, /slug-99\.html/);
     assert.equal(md.includes("https://example.com"), false);
     assert.equal(md.includes("accept"), false);
+  });
+});
+
+describe("image_url helpers", () => {
+  it("picks Rakuten mediumImageUrls first entry (string or imageUrl object)", () => {
+    assert.equal(
+      pickRakutenImageUrl({
+        mediumImageUrls: [
+          "https://thumbnail.image.rakuten.co.jp/?_ex=128x128&id=a",
+          "https://thumbnail.image.rakuten.co.jp/?_ex=128x128&id=b",
+        ],
+      }),
+      "https://thumbnail.image.rakuten.co.jp/?_ex=128x128&id=a",
+    );
+    assert.equal(
+      pickRakutenImageUrl({
+        mediumImageUrls: [
+          { imageUrl: "https://thumbnail.image.rakuten.co.jp/?_ex=128x128&id=c" },
+        ],
+      }),
+      "https://thumbnail.image.rakuten.co.jp/?_ex=128x128&id=c",
+    );
+    assert.equal(pickRakutenImageUrl({ mediumImageUrls: [] }), null);
+    assert.equal(pickRakutenImageUrl({}), null);
+  });
+
+  it("picks Yahoo image.medium", () => {
+    assert.equal(
+      pickYahooImageUrl({
+        image: { medium: "https://item-shopping.c.yimg.jp/i/g/abc" },
+      }),
+      "https://item-shopping.c.yimg.jp/i/g/abc",
+    );
+    assert.equal(pickYahooImageUrl({ image: { medium: "  " } }), null);
+    assert.equal(pickYahooImageUrl({}), null);
+  });
+
+  it("sets image_url only when current is blank", () => {
+    assert.equal(
+      resolveImageUrlUpdate(null, "https://example.com/a.jpg"),
+      "https://example.com/a.jpg",
+    );
+    assert.equal(
+      resolveImageUrlUpdate("", "https://example.com/a.jpg"),
+      "https://example.com/a.jpg",
+    );
+    assert.equal(
+      resolveImageUrlUpdate("https://existing.example/x.jpg", "https://example.com/a.jpg"),
+      null,
+    );
+    assert.equal(resolveImageUrlUpdate(null, null), null);
+    assert.equal(resolveImageUrlUpdate(null, "  "), null);
   });
 });
 

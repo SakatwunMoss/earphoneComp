@@ -12,14 +12,18 @@ import {
 } from "@/lib/diagnose/tagKeywords";
 
 export type NcPreference = "required" | "preferred" | "none";
-export type FormPreference = "tws" | "any";
-export type BudgetPreference = "under_10000" | "under_30000" | "no_limit";
+export type ConnectionPreference = "wired" | "wireless" | "any";
+export type BudgetPreference =
+  | "under_4000"
+  | "under_10000"
+  | "under_30000"
+  | "no_limit";
 export type WaterPreference = "needed" | "not_needed";
 
 export type QuizAnswers = {
   scene: SceneId;
   nc: NcPreference;
-  form: FormPreference;
+  connection: ConnectionPreference;
   budget: BudgetPreference;
   priorities: PriorityId[];
   water: WaterPreference;
@@ -45,7 +49,7 @@ export type ScoreBreakdown = {
   priorityHits: PriorityId[];
   matchedNc: boolean;
   matchedWater: boolean;
-  matchedCategory: boolean;
+  matchedConnection: boolean;
   matchedBudget: boolean;
 };
 
@@ -104,8 +108,10 @@ export function parseWaterLiquidRating(
   return null;
 }
 
-function budgetMax(budget: BudgetPreference): number | null {
+export function budgetMax(budget: BudgetPreference): number | null {
   switch (budget) {
+    case "under_4000":
+      return 4000;
     case "under_10000":
       return 10000;
     case "under_30000":
@@ -113,6 +119,22 @@ function budgetMax(budget: BudgetPreference): number | null {
     case "no_limit":
       return null;
   }
+}
+
+/** category の部分一致で有線/ワイヤレスを判定（「有線＋ワイヤレス」は両方） */
+export function matchesConnectionPreference(
+  category: string,
+  connection: ConnectionPreference,
+): boolean {
+  if (connection === "any") {
+    return true;
+  }
+  const isWired = category.includes("有線");
+  const isWireless = category.includes("ワイヤレス");
+  if (connection === "wired") {
+    return isWired;
+  }
+  return isWireless;
 }
 
 function textCorpus(earphone: Earphone): string {
@@ -151,7 +173,7 @@ export function matchesHardFilters(
     waterNeeded: true,
   },
 ): boolean {
-  if (answers.form === "tws" && earphone.category !== "完全ワイヤレス") {
+  if (!matchesConnectionPreference(earphone.category, answers.connection)) {
     return false;
   }
 
@@ -237,6 +259,11 @@ export function scoreEarphone(
     answers.water !== "needed" ||
     (waterRating != null && waterRating >= WATER_MIN_LIQUID_RATING);
 
+  const matchedConnection = matchesConnectionPreference(
+    earphone.category,
+    answers.connection,
+  );
+
   const breakdown: ScoreBreakdown = {
     nc,
     scene,
@@ -247,8 +274,7 @@ export function scoreEarphone(
     matchedNc:
       answers.nc !== "required" || earphone.noise_cancelling === true,
     matchedWater,
-    matchedCategory:
-      answers.form !== "tws" || earphone.category === "完全ワイヤレス",
+    matchedConnection,
     matchedBudget,
   };
 
@@ -296,8 +322,13 @@ export function formatMatchReasons(
     reasons.push(reasonCopy.inBudget);
   }
 
-  if (answers.form === "tws" && breakdown.matchedCategory) {
-    reasons.push(reasonCopy.tws);
+  if (answers.connection === "wired" && breakdown.matchedConnection) {
+    reasons.push(reasonCopy.wired);
+  } else if (
+    answers.connection === "wireless" &&
+    breakdown.matchedConnection
+  ) {
+    reasons.push(reasonCopy.wireless);
   }
 
   if (reasons.length === 0) {
@@ -320,7 +351,6 @@ function buildRelaxationSteps(answers: QuizAnswers): RelaxStep[] {
     },
   ];
 
-  // 優先度: 予算 → NC → 防水（装着スタイルは緩和しない）
   const canRelaxBudget = answers.budget !== "no_limit";
   const canRelaxNc = answers.nc === "required";
   const canRelaxWater = answers.water === "needed";
@@ -331,17 +361,24 @@ function buildRelaxationSteps(answers: QuizAnswers): RelaxStep[] {
     waterNeeded: true,
   };
 
-  if (canRelaxBudget) {
-    flags = { ...flags, budget: false };
-    steps.push({ flags, newlyRelaxed: ["budget"] });
-  }
-  if (canRelaxNc) {
-    flags = { ...flags, ncRequired: false };
-    steps.push({ flags, newlyRelaxed: ["ncRequired"] });
-  }
-  if (canRelaxWater) {
-    flags = { ...flags, waterNeeded: false };
-    steps.push({ flags, newlyRelaxed: ["water"] });
+  // 最安予算帯: ノイキャン → 防水 → 予算（高額機が先に出ないようにする）
+  // それ以外: 予算 → NC → 防水（接続方式は緩和しない）
+  const relaxOrder: RelaxedFilterId[] =
+    answers.budget === "under_4000"
+      ? ["ncRequired", "water", "budget"]
+      : ["budget", "ncRequired", "water"];
+
+  for (const id of relaxOrder) {
+    if (id === "budget" && canRelaxBudget) {
+      flags = { ...flags, budget: false };
+      steps.push({ flags, newlyRelaxed: ["budget"] });
+    } else if (id === "ncRequired" && canRelaxNc) {
+      flags = { ...flags, ncRequired: false };
+      steps.push({ flags, newlyRelaxed: ["ncRequired"] });
+    } else if (id === "water" && canRelaxWater) {
+      flags = { ...flags, waterNeeded: false };
+      steps.push({ flags, newlyRelaxed: ["water"] });
+    }
   }
 
   return steps;

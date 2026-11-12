@@ -68,9 +68,9 @@ export const diagnoseCopy = {
         en: "Do you need noise cancelling?",
         ja: "ノイズキャンセリングは必要ですか？",
       } satisfies BilingualCopy,
-      form: {
-        en: "What style do you prefer?",
-        ja: "装着スタイルの希望は？",
+      connection: {
+        en: "Wired or wireless?",
+        ja: "接続方式の希望は？",
       } satisfies BilingualCopy,
       budget: {
         en: "What's your max budget?",
@@ -106,14 +106,19 @@ export const diagnoseCopy = {
         } satisfies BilingualCopy,
         none: { en: "Not needed", ja: "不要" } satisfies BilingualCopy,
       },
-      form: {
-        tws: {
-          en: "True wireless preferred",
-          ja: "完全ワイヤレス希望",
+      connection: {
+        wired: { en: "Wired", ja: "有線" } satisfies BilingualCopy,
+        wireless: {
+          en: "Wireless (TWS / neckband)",
+          ja: "ワイヤレス（完全ワイヤレス・ネックバンド）",
         } satisfies BilingualCopy,
         any: { en: "Either is fine", ja: "どちらでも" } satisfies BilingualCopy,
       },
       budget: {
+        under_4000: {
+          en: "Around ¥3,000 (up to ¥4,000)",
+          ja: "〜4,000円（3,000円前後）",
+        } satisfies BilingualCopy,
         under_10000: {
           en: "Up to ¥10,000",
           ja: "〜1万円",
@@ -123,8 +128,8 @@ export const diagnoseCopy = {
           ja: "〜3万円",
         } satisfies BilingualCopy,
         no_limit: {
-          en: "¥30,000+ (no limit)",
-          ja: "3万円以上（上限なし）",
+          en: "No limit",
+          ja: "上限なし",
         } satisfies BilingualCopy,
       },
       priorities: {
@@ -140,9 +145,13 @@ export const diagnoseCopy = {
           en: "Comfort & fit",
           ja: "装着感",
         } satisfies BilingualCopy,
+        value: {
+          en: "Value for money",
+          ja: "コスパ",
+        } satisfies BilingualCopy,
         call: {
-          en: "Call quality",
-          ja: "通話品質",
+          en: "Calls & mic",
+          ja: "通話・マイク",
         } satisfies BilingualCopy,
       },
       water: {
@@ -236,9 +245,13 @@ export const diagnoseCopy = {
       ja: "汗・水濡れ対策あり",
     } satisfies BilingualCopy,
     inBudget: { en: "Within budget", ja: "予算内" } satisfies BilingualCopy,
-    tws: {
-      en: "True wireless",
-      ja: "完全ワイヤレス",
+    wired: {
+      en: "Wired",
+      ja: "有線",
+    } satisfies BilingualCopy,
+    wireless: {
+      en: "Wireless",
+      ja: "ワイヤレス",
     } satisfies BilingualCopy,
     closeMatch: {
       en: "Close match",
