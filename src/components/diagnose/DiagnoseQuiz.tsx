@@ -334,10 +334,10 @@ export function DiagnoseQuiz({ earphones }: DiagnoseQuizProps) {
         </div>
       </div>
 
-      <div className="rounded-xl border border-teal-100 bg-teal-50/40 p-5 sm:p-6">
+      <div className="rounded-xl border border-teal-100 bg-teal-50/40 p-4 sm:p-6">
         <StepContent step={step} draft={draft} setDraft={setDraft} />
 
-        <div className="mt-8 flex flex-wrap items-center gap-3">
+        <div className="mt-5 flex flex-wrap items-center gap-3">
           <button
             type="button"
             onClick={goBack}
@@ -398,12 +398,12 @@ function DiagnoseQuizPlaceholder() {
         </div>
       </div>
 
-      <div className="rounded-xl border border-teal-100 bg-teal-50/40 p-5 sm:p-6">
+      <div className="rounded-xl border border-teal-100 bg-teal-50/40 p-4 sm:p-6">
         <div className="space-y-3">
           <div className="h-5 w-2/3 max-w-sm animate-pulse rounded bg-teal-100/80" />
           <div className="h-4 w-1/2 max-w-xs animate-pulse rounded bg-teal-100/60" />
         </div>
-        <div className="mt-4 flex flex-col gap-2">
+        <div className="mt-4 grid grid-cols-2 gap-2">
           {Array.from({ length: 4 }, (_, i) => (
             <div
               key={i}
@@ -411,7 +411,7 @@ function DiagnoseQuizPlaceholder() {
             />
           ))}
         </div>
-        <div className="mt-8 flex flex-wrap items-center gap-3">
+        <div className="mt-5 flex flex-wrap items-center gap-3">
           <div className="h-12 w-24 animate-pulse rounded-xl bg-gray-200/80" />
           <div className="h-12 w-28 animate-pulse rounded-xl bg-teal-200/80" />
         </div>
@@ -503,6 +503,7 @@ function StepContent({
           ).map(([id, label]) => ({ id, label }))}
           value={draft.connection}
           onChange={(connection) => setDraft((d) => ({ ...d, connection }))}
+          columns={1}
         />
       );
     case "budget":
@@ -549,12 +550,20 @@ function ChoiceStep<T extends string>({
   options,
   value,
   onChange,
+  columns = 2,
 }: {
   title: BilingualCopy;
   options: { id: T; label: BilingualCopy }[];
   value: T | null;
   onChange: (id: T) => void;
+  columns?: 1 | 2;
 }) {
+  const gridClass =
+    columns === 1
+      ? "mt-4 grid grid-cols-1 gap-2"
+      : "mt-4 grid grid-cols-2 gap-2";
+  const spanLastFullWidth = columns === 2 && options.length % 2 === 1;
+
   return (
     <fieldset>
       <BilingualText
@@ -564,7 +573,7 @@ function ChoiceStep<T extends string>({
         enClassName="font-medium text-gray-900"
         jaClassName="!text-gray-600"
       />
-      <div className="mt-4 flex flex-col gap-2">
+      <div className={gridClass}>
         {options.map((option) => {
           const selected = value === option.id;
           return (
@@ -572,7 +581,9 @@ function ChoiceStep<T extends string>({
               key={option.id}
               type="button"
               onClick={() => onChange(option.id)}
-              className={`rounded-xl border px-4 py-3 text-left transition-colors ${
+              className={`min-h-11 h-full rounded-xl border px-4 py-3 text-left transition-colors ${
+                spanLastFullWidth ? "last:col-span-2" : ""
+              } ${
                 selected
                   ? "border-teal-500 bg-white ring-1 ring-teal-500"
                   : "border-teal-100/80 bg-white/80 hover:border-teal-300"
@@ -616,6 +627,8 @@ function MultiChoiceStep<T extends string>({
     }
   }
 
+  const spanLastFullWidth = options.length % 2 === 1;
+
   return (
     <fieldset>
       <BilingualText
@@ -625,7 +638,7 @@ function MultiChoiceStep<T extends string>({
         enClassName="font-medium text-gray-900"
         jaClassName="!text-gray-600"
       />
-      <div className="mt-4 flex flex-col gap-2">
+      <div className="mt-4 grid grid-cols-2 gap-2">
         {options.map((option) => {
           const selected = values.includes(option.id);
           return (
@@ -633,7 +646,9 @@ function MultiChoiceStep<T extends string>({
               key={option.id}
               type="button"
               onClick={() => toggle(option.id)}
-              className={`rounded-xl border px-4 py-3 text-left transition-colors ${
+              className={`min-h-11 h-full rounded-xl border px-4 py-3 text-left transition-colors ${
+                spanLastFullWidth ? "last:col-span-2" : ""
+              } ${
                 selected
                   ? "border-teal-500 bg-white ring-1 ring-teal-500"
                   : "border-teal-100/80 bg-white/80 hover:border-teal-300"
